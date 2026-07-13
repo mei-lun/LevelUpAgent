@@ -577,8 +577,6 @@ button.detail-row { padding: 0; border: 0; background: transparent; text-align: 
 .metric-grid span { color: var(--muted); font-size: var(--font-caption); }
 .permission-line svg { color: var(--muted); }
 .goal-objective { max-height: 48px; margin: 3px 0 9px; overflow: hidden; color: #4f524d; font-size: var(--font-caption); line-height: 1.5; }
-.goal-progress { height: 3px; overflow: hidden; border-radius: 3px; background: var(--line-strong); }
-.goal-progress i { height: 100%; display: block; border-radius: inherit; background: linear-gradient(90deg, var(--accent), #e69055); transition: width .2s ease; }
 .goal-meta { display: flex; align-items: center; gap: 4px; margin-top: 6px; color: var(--muted); font-size: var(--font-compact); }
 .goal-meta span:last-child { margin-left: auto; }
 .goal-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
@@ -978,7 +976,6 @@ button.detail-row { padding: 0; border: 0; background: transparent; text-align: 
 .metric-grid > div { border-radius: 0 9px 9px 0; background: rgba(255,255,255,.54); }
 .metric-grid > div:first-child { border-color: #f43f5e; }
 .metric-grid > div:last-child { border-color: #38bdf8; }
-.goal-progress i { background: linear-gradient(90deg, #f43f5e, #fbbf24); }
 
 .dialog-backdrop { background: rgba(15, 23, 42, .32); backdrop-filter: blur(12px); }
 .dialog, .diff-dialog, .mcp-dialog, .skills-dialog, .instructions-dialog, .request-logs-dialog {

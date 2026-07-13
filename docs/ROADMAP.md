@@ -24,7 +24,7 @@
 - [x] Git 状态与 diff 审查
 - [x] Git 变更回滚（完整预览、一次性令牌、快照复核）
 - [x] 文件附件和上下文选择（图片、UTF-8 文本/代码、PDF 与 Office）
-- [x] Windows/macOS/Linux 签名更新运行时与发布凭据门禁
+- [x] Windows Tauri 签名更新运行时与发布凭据门禁
 
 ## 0.3 替代切换器
 
@@ -38,7 +38,7 @@
 
 ## 0.4 Agent 内核
 
-- [x] Goal 持续执行、预算和完成审计
+- [x] Goal 持续执行、暂停/恢复和完成审计
 - [x] 子 Agent 与隔离工作树
 - [x] MCP client 和动态工具注册
 - [x] stdio / Streamable HTTP、凭据隔离与真实子进程集成测试
@@ -103,8 +103,9 @@
 - [x] 中文/English 全部前端静态字符串、可访问名称、状态和提示文案
 - [x] 系统语言首次选择、顶栏即时切换、持久化与 locale-aware 时间格式
 - [x] Tauri updater 签名验证、显式安装重启和本地未配置状态
-- [x] tag 发布生成 release-only updater 配置，缺私钥、公钥、endpoint 或 Windows/macOS 签名凭据即失败
-- [ ] 使用所有者凭据完成 Windows Authenticode、Apple notarization 与 updater 实体机验收
+- [x] Windows tag 发布生成 release-only updater 配置，缺私钥、公钥、密码或 endpoint 即失败
+- [ ] 完成 Windows updater 实体机验收
+- [ ] 后续按需恢复 Authenticode、macOS notarization 与多平台 tag 发布
 
 ## 0.12 已验证边界
 

@@ -356,7 +356,6 @@ pub struct GoalState {
     pub thread_id: String,
     pub objective: String,
     pub status: GoalStatus,
-    pub token_budget: Option<u64>,
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub turns: u64,
@@ -372,7 +371,6 @@ pub struct GoalState {
 pub struct GoalCreateRequest {
     pub thread_id: String,
     pub objective: String,
-    pub token_budget: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]

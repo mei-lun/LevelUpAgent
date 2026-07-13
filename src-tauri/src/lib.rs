@@ -278,7 +278,7 @@ fn attach_goal(
     request.available_tools.extend([
         AgentToolDefinition {
             name: "get_goal".to_owned(),
-            description: "Read the current persistent Goal, status, budget, usage, and audit state.".to_owned(),
+            description: "Read the current persistent Goal, status, usage, and audit state.".to_owned(),
             input_schema: serde_json::json!({ "type": "object", "properties": {} }),
             read_only: true,
         },
@@ -1250,15 +1250,6 @@ fn change_goal_status(
 }
 
 #[tauri::command]
-fn set_goal_budget(
-    database: tauri::State<'_, database::Database>,
-    thread_id: String,
-    token_budget: Option<u64>,
-) -> Result<GoalState, String> {
-    database.set_goal_budget(&thread_id, token_budget)
-}
-
-#[tauri::command]
 fn scan_skills(
     app: tauri::AppHandle,
     database: tauri::State<'_, database::Database>,
@@ -1729,7 +1720,6 @@ pub fn run() {
             create_goal,
             get_goal,
             change_goal_status,
-            set_goal_budget,
             scan_skills,
             set_skill_enabled,
             list_mcp_servers,

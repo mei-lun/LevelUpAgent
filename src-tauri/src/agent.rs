@@ -1335,9 +1335,6 @@ fn system_prompt_with_omission(request: &AgentTurnRequest, omission: &ContextOmi
             goal.turns,
             goal.input_tokens.saturating_add(goal.output_tokens)
         ));
-        if let Some(budget) = goal.token_budget {
-            prompt.push_str(&format!(" / {budget}"));
-        }
         if status == "auditing" {
             prompt.push_str("\nA completion claim is pending audit. Derive every requirement from the objective, inspect authoritative current-state evidence, and call update_goal with complete only if every requirement is proven. Otherwise continue working.");
         } else if status == "active" {
@@ -2145,7 +2142,6 @@ mod tests {
             thread_id: "thread-test".to_owned(),
             objective: "Ship the verified feature.".to_owned(),
             status: crate::models::GoalStatus::Auditing,
-            token_budget: Some(10_000),
             input_tokens: 1_000,
             output_tokens: 500,
             turns: 4,
@@ -2158,7 +2154,7 @@ mod tests {
         let prompt = system_prompt(&request);
         assert!(prompt.contains("Status: auditing"));
         assert!(prompt.contains("authoritative current-state evidence"));
-        assert!(prompt.contains("1500 / 10000"));
+        assert!(prompt.contains("Tokens used: 1500"));
     }
 
     #[test]

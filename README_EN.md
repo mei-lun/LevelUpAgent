@@ -18,7 +18,7 @@
   </p>
 
   <p>
-    <img alt="Version" src="https://img.shields.io/badge/version-1.0.0-ff5a4f?style=flat-square" />
+    <img alt="Version" src="https://img.shields.io/badge/version-1.0.1-ff5a4f?style=flat-square" />
     <img alt="Status" src="https://img.shields.io/badge/status-stable-35a36f?style=flat-square" />
     <img alt="Platforms" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-232f3e?style=flat-square" />
     <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-LGPL--3.0--only-2f80ed?style=flat-square" /></a>
@@ -30,7 +30,7 @@
 LevelUpAgent brings model connections, project context, tool approvals, MCP, Skills, Git review, and long-running goals into one desktop workbench. It is designed around [LevelUpAPI](https://levelup.mom/) and also works with standard OpenAI Responses, OpenAI Chat Completions, Anthropic Messages, and Gemini GenerateContent services.
 
 > [!IMPORTANT]
-> LevelUpAgent 1.0.0 is the first stable release. Windows and Linux builds have passed real build and smoke checks. The macOS release pipeline is ready, but signed distribution still requires notarization and physical-device validation. Committing or backing up important work is still recommended.
+> LevelUpAgent 1.0.0 is the first stable release. Windows and Linux builds have passed real build and smoke checks. The current tag workflow focuses on Windows and protects automatic updates with Tauri signatures. Committing or backing up important work is still recommended.
 
 ## Why LevelUpAgent
 
@@ -49,11 +49,11 @@ Download the package for your platform from **Releases** in the repository sideb
 
 | Platform | Package | Status |
 | --- | --- | --- |
-| Windows x64 | NSIS .exe / MSI | Built and verified |
-| Linux x64 | AppImage / DEB / RPM | Built; AppImage and DEB smoke-tested |
-| macOS Apple Silicon / Intel | DMG / App Bundle | Workflow ready; signing and hardware validation pending |
+| Windows x64 | NSIS .exe / MSI | Built by the tag workflow with Tauri-signed updates |
+| Linux x64 | AppImage / DEB / RPM | Built and smoke-tested; not published by the current tag workflow |
+| macOS Apple Silicon / Intel | DMG / App Bundle | Not published by the current tag workflow |
 
-Checksums for the current local Windows validation artifacts are recorded in [the SHA-256 manifest](docs/SHA256SUMS_1.0.0.txt). Public distribution should use signed artifacts from GitHub Releases.
+Checksums for the current local Windows validation artifacts are recorded in [the SHA-256 manifest](docs/SHA256SUMS_1.0.0.txt). Future public updates should use Tauri-signed GitHub Release artifacts with `.sig` files and `latest.json`.
 
 ### 2. Connect a model
 
@@ -85,7 +85,7 @@ Choose a project directory, create a conversation, and describe the outcome you 
 - Project conversations, Markdown output, token accounting, and local SQLite persistence
 - Managed image, text, source code, PDF, DOCX, XLSX, and PPTX context
 - Persistent Instructions with reviewable synchronization to popular CLI instruction files
-- Long-running Goals with token budgets, pause/resume, completion audits, and blocked audits
+- Long-running Goals with pause/resume, completion audits, and blocked audits
 
 ### Composable extensions
 
@@ -170,7 +170,7 @@ Validate all four protocol contracts against a local LevelUpAPI checkout:
 
 Version 1.0.0 is LevelUpAgent's first stable milestone. It combines four protocols, connection failover, local tools, SQLite, Git review, MCP, Skills, Goals, isolated sub-agents, multi-project conversations, three permission levels, drag-and-drop context, and complete LevelUpAPI platform guidance.
 
-Official Windows and macOS signing and automatic updates still depend on repository-owner credentials for Authenticode, Apple notarization, and Tauri updater signing. Follow the [roadmap](docs/ROADMAP.md) for platform validation progress.
+Windows automatic updates depend on repository-owner Tauri updater keys and physical-device validation. The current installers do not use Authenticode and may trigger SmartScreen; tag publishing for other platforms is not enabled. Follow the [roadmap](docs/ROADMAP.md) for progress.
 
 ## Contributing
 

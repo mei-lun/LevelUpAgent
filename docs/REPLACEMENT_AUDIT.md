@@ -12,7 +12,7 @@
 | cc-switch 配置迁移 | 核心完成 | 可读 cc-switch/Codex/Claude/Gemini/OpenCode |
 | 外部 CLI 配置写回 | 核心完成 | Codex/Claude/Gemini/OpenCode 有脱敏预览、备份、原子替换、回滚 |
 | MCP 与 Skill | 已完成 | stdio/HTTP MCP、凭据隔离；多目录 Skill 发现与按需读取 |
-| Agent 执行与长期 Goal | 已完成 | 工具审批、持久 Goal、预算、两阶段完成/阻塞审计；长历史按预算压缩且保持工具调用配对 |
+| Agent 执行与长期 Goal | 已完成 | 工具审批、持久 Goal、两阶段完成/阻塞审计；长历史按上下文上限压缩且保持工具调用配对 |
 | CodexPlusPlus 会话增强 | 原生替代 | LevelUpAgent 自己持有会话，不依赖 CDP 注入第三方 UI |
 | 图片输入 | 已完成 | 托管存储、四协议编码、格式/大小/数量边界 |
 | 文本/代码上下文附件 | 已完成 | 托管 UTF-8 文件、扩展/大小边界、四协议 user context |
@@ -22,10 +22,9 @@
 | 本地请求日志浏览器 | 已完成 | 模型筛选、成功率、延迟、Token、接管、request-id 与错误 |
 | Git 变更审查与回滚 | 已完成 | 逐文件 diff、两阶段确认、快照复核、tracked restore 与 untracked delete |
 | 本地安全边界 | 已审计 | 路径/symlink、凭据、MCP TLS、配置导出、附件、子 Agent 与 updater |
-| 签名与自动更新 | 代码完成/凭据待验收 | updater 运行时、签名产物、CI 门禁已接入；缺所有者 URL/证书实体机验收 |
+| 签名与自动更新 | 代码完成/凭据待验收 | Windows updater 运行时、Tauri 签名产物与 CI 门禁已接入；待实体机验收 |
 | 中英文完整本地化 | 已完成 | 系统语言检测、持久切换、全部静态 UI/ARIA/状态文案与 locale 时间 |
 | Windows/Linux 可运行包 | 已完成 | Windows MSI/NSIS；Linux DEB/RPM/AppImage，含实际启动和 DEB 安装验收 |
 
 因此，`0.12.0` 已可在日常多模型开发工作流中停止依赖 cc-switch/CodexPlusPlus。全量卸载的最终
-1.0 验收仍需仓库所有者提供发布 URL、Windows/Apple 签名凭据，并在 macOS 实体机验证安装、
-升级和回滚。
+1.0 验收仍需仓库所有者提供 updater URL 与签名密钥，并在 Windows 实体机验证安装、升级和回滚。

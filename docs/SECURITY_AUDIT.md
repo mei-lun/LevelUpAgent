@@ -30,7 +30,7 @@
   确定性可见摘要，工具调用与匹配结果成组保留。SQLite 完整历史不被压缩，省略统计进入系统提示词，
   缺失或孤立工具结果不会被发送为协议非法上下文。
 - updater 只在 release 编译开关存在时注册；发布 endpoint 必须是无 URL credentials/fragment 的 HTTPS
-  URL，产物签名私钥、公钥和 Windows/macOS 签名凭据缺一即失败。
+  URL，Tauri updater 私钥、公钥和密码缺一即失败。
 
 ## 明确保留的风险
 
@@ -39,8 +39,8 @@
   但最终文件是显式导出，保护强度取决于目标目录 ACL。
 - 配置的 Provider 会收到用户选择发送的消息和附件；LevelUpAgent 不会把数据发送到未配置的第三方。
 - SSH 远程工作区尚未实现，因此没有宣称远程主机隔离或远程凭据安全。
-- 正式 updater、Authenticode、Apple notarization 仍需仓库所有者凭据和实体机验收；本地 unsigned build
-  不能替代这项验证。
+- 正式 updater 仍需仓库所有者密钥和 Windows 实体机验收；当前安装包没有 Authenticode，Tauri 更新
+  签名只保证更新完整性与发布密钥连续性，不提供 Windows 系统级发布者身份。
 
 ## 回归证据
 

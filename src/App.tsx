@@ -103,7 +103,6 @@ import {
   scanSkills,
   selectWorkspace,
   setSkillEnabled,
-  setGoalBudget,
   startMcpServer,
   stopMcpServer,
   upsertMcpServer,
@@ -908,7 +907,7 @@ function App() {
       try {
         let goal = await getGoal(activeThread.id);
         if (!goal || goal.status === "completed" || goal.status === "cancelled") {
-          goal = await createGoal(activeThread.id, value || tr("分析附件并完成请求", "Analyze the attachments and complete the request"), 100_000);
+          goal = await createGoal(activeThread.id, value || tr("分析附件并完成请求", "Analyze the attachments and complete the request"));
         } else if (goal.status === "paused" || goal.status === "blocked") {
           goal = await changeGoalStatus(activeThread.id, "resume");
         }
@@ -1095,17 +1094,11 @@ function App() {
     });
   };
 
-  const controlGoal = async (action: "pause" | "resume" | "cancel" | "extend") => {
+  const controlGoal = async (action: "pause" | "resume" | "cancel") => {
     if (!goalState || !isDesktop()) return;
     try {
       if ((action === "pause" || action === "cancel") && running) {
         await stopAgent(false);
-      }
-      if (action === "extend") {
-        const used = goalState.inputTokens + goalState.outputTokens;
-        const nextBudget = Math.max(goalState.tokenBudget ?? 0, used) + 50_000;
-        setGoalState(await setGoalBudget(activeThread.id, nextBudget));
-        return;
       }
       const nextGoal = await changeGoalStatus(activeThread.id, action);
       setGoalState(nextGoal);
@@ -1964,7 +1957,7 @@ function Inspector({
   onWorkspace: () => void;
   onSettings: () => void;
   onDiff: (change: GitFileChange) => void;
-  onGoalAction: (action: "pause" | "resume" | "cancel" | "extend") => void;
+  onGoalAction: (action: "pause" | "resume" | "cancel") => void;
 }) {
   const gitUnavailable = gitStatus?.isAvailable === false;
   return (
@@ -2031,21 +2024,18 @@ function Inspector({
           {goal ? (
             <>
               <div className="goal-objective" title={goal.objective}>{goal.objective}</div>
-              <div className="goal-progress"><i style={{ width: `${goalProgress(goal)}%` }} /></div>
               <div className="goal-meta">
                 <span>{formatTokens(goal.inputTokens + goal.outputTokens)} tokens</span>
-                <span>{goal.tokenBudget ? `/ ${formatTokens(goal.tokenBudget)}` : tr("无上限", "Unlimited")}</span>
                 <span>{goal.turns} {tr("回合", "turns")}</span>
               </div>
               <div className="goal-actions">
                 {(goal.status === "active" || goal.status === "auditing") && <button onClick={() => onGoalAction("pause")}><Pause size={12} />{tr("暂停", "Pause")}</button>}
                 {(goal.status === "paused" || goal.status === "blocked") && <button onClick={() => onGoalAction("resume")}><Play size={12} />{tr("继续", "Resume")}</button>}
-                {!(["completed", "cancelled"] as string[]).includes(goal.status) && <button onClick={() => onGoalAction("extend")}><Plus size={12} />50k</button>}
                 {!(["completed", "cancelled"] as string[]).includes(goal.status) && <button className="danger" onClick={() => onGoalAction("cancel")}><X size={12} />{tr("取消", "Cancel")}</button>}
               </div>
             </>
           ) : (
-            <div className="goal-empty">{tr("发送首条目标消息后创建，默认预算 100k Token。", "Created after the first Goal message with a default 100k-token budget.")}</div>
+            <div className="goal-empty">{tr("发送首条目标消息后创建并持续执行。", "Created after the first Goal message and runs continuously.")}</div>
           )}
         </section>
       )}
@@ -3449,11 +3439,6 @@ function goalStatusLabel(status: GoalState["status"]) {
   return labels[status];
 }
 
-function goalProgress(goal: GoalState) {
-  if (!goal.tokenBudget) return goal.status === "completed" ? 100 : 0;
-  return Math.min(100, ((goal.inputTokens + goal.outputTokens) / goal.tokenBudget) * 100);
-}
-
 function formatTokens(value: number) {
   if (value < 1000) return String(value);
   return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}K`;
@@ -3533,7 +3518,7 @@ function formatDuration(durationMs: number) {
 function modeDescription(mode: AgentMode) {
   if (mode === "agent") return tr("可读取、修改文件并运行命令，是否询问由权限等级决定", "Read and edit files and run commands according to the selected permission level");
   if (mode === "plan") return tr("只读取和分析项目，不允许写文件或运行命令", "Read and analyze the project without writing files or running commands");
-  if (mode === "goal") return tr("围绕持久目标连续执行，直到完成、暂停或达到预算", "Continue working on a persistent goal until completion, pause, or budget limit");
+  if (mode === "goal") return tr("围绕持久目标连续执行，直到完成或暂停", "Continue working on a persistent goal until completion or pause");
   return tr("纯对话，不向模型提供本地工具", "Conversation only; no local tools are provided to the model");
 }
 

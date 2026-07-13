@@ -256,10 +256,9 @@ export async function executeTool(
 export async function createGoal(
   threadId: string,
   objective: string,
-  tokenBudget: number | undefined = 100_000,
 ): Promise<GoalState> {
   return invoke<GoalState>("create_goal", {
-    request: { threadId, objective, tokenBudget: tokenBudget ?? null },
+    request: { threadId, objective },
   });
 }
 
@@ -273,13 +272,6 @@ export async function changeGoalStatus(
   action: "pause" | "resume" | "cancel",
 ): Promise<GoalState> {
   return invoke<GoalState>("change_goal_status", { threadId, action });
-}
-
-export async function setGoalBudget(
-  threadId: string,
-  tokenBudget?: number,
-): Promise<GoalState> {
-  return invoke<GoalState>("set_goal_budget", { threadId, tokenBudget: tokenBudget ?? null });
 }
 
 export async function listMcpServers(): Promise<McpServerSnapshot[]> {

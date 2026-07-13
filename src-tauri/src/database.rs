@@ -102,7 +102,6 @@ impl Database {
                     thread_id TEXT NOT NULL UNIQUE,
                     objective TEXT NOT NULL,
                     status TEXT NOT NULL,
-                    token_budget INTEGER,
                     input_tokens INTEGER NOT NULL DEFAULT 0,
                     output_tokens INTEGER NOT NULL DEFAULT 0,
                     turns INTEGER NOT NULL DEFAULT 0,
@@ -511,12 +510,6 @@ impl Database {
         if objective.chars().count() > 20_000 {
             return Err("Goal objective is longer than 20,000 characters".to_owned());
         }
-        if request
-            .token_budget
-            .is_some_and(|budget| !(1_000..=10_000_000).contains(&budget))
-        {
-            return Err("Goal token budget must be between 1,000 and 10,000,000".to_owned());
-        }
         if let Some(existing) = self.get_goal(&request.thread_id)?
             && !matches!(
                 existing.status,
@@ -540,18 +533,10 @@ impl Database {
         connection
             .execute(
                 "INSERT INTO goals
-                 (id, thread_id, objective, status, token_budget, input_tokens, output_tokens,
+                 (id, thread_id, objective, status, input_tokens, output_tokens,
                   turns, blocked_attempts, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, 'active', ?4, 0, 0, 0, 0, ?5, ?5)",
-                params![
-                    id,
-                    request.thread_id,
-                    objective,
-                    request
-                        .token_budget
-                        .map(|value| value.min(i64::MAX as u64) as i64),
-                    now,
-                ],
+                 VALUES (?1, ?2, ?3, 'active', 0, 0, 0, 0, ?4, ?4)",
+                params![id, request.thread_id, objective, now],
             )
             .map_err(database_error)?;
         drop(connection);
@@ -566,7 +551,7 @@ impl Database {
             .map_err(|_| "Could not lock conversation database".to_owned())?;
         connection
             .query_row(
-                "SELECT id, thread_id, objective, status, token_budget, input_tokens,
+                "SELECT id, thread_id, objective, status, input_tokens,
                         output_tokens, turns, blocked_attempts, last_blocker, audit_note,
                         created_at, updated_at
                  FROM goals WHERE thread_id = ?1",
@@ -615,42 +600,6 @@ impl Database {
             .ok_or_else(|| "Goal disappeared".to_owned())
     }
 
-    pub fn set_goal_budget(
-        &self,
-        thread_id: &str,
-        token_budget: Option<u64>,
-    ) -> Result<GoalState, String> {
-        let current = self
-            .get_goal(thread_id)?
-            .ok_or_else(|| "This task has no Goal".to_owned())?;
-        if token_budget.is_some_and(|budget| {
-            !(1_000..=10_000_000).contains(&budget)
-                || budget <= current.input_tokens.saturating_add(current.output_tokens)
-        }) {
-            return Err(
-                "Goal budget must exceed current usage and be between 1,000 and 10,000,000"
-                    .to_owned(),
-            );
-        }
-        let connection = self
-            .connection
-            .lock()
-            .map_err(|_| "Could not lock conversation database".to_owned())?;
-        connection
-            .execute(
-                "UPDATE goals SET token_budget = ?2, updated_at = ?3 WHERE thread_id = ?1",
-                params![
-                    thread_id,
-                    token_budget.map(|value| value.min(i64::MAX as u64) as i64),
-                    now_millis(),
-                ],
-            )
-            .map_err(database_error)?;
-        drop(connection);
-        self.get_goal(thread_id)?
-            .ok_or_else(|| "Goal disappeared".to_owned())
-    }
-
     pub fn record_goal_usage(
         &self,
         thread_id: &str,
@@ -670,10 +619,6 @@ impl Database {
                     input_tokens = MIN(9223372036854775807, input_tokens + ?2),
                     output_tokens = MIN(9223372036854775807, output_tokens + ?3),
                     turns = turns + 1,
-                    status = CASE
-                      WHEN token_budget IS NOT NULL AND input_tokens + output_tokens + ?2 + ?3 >= token_budget
-                           AND status IN ('active', 'auditing') THEN 'paused'
-                      ELSE status END,
                     updated_at = ?4
                  WHERE thread_id = ?1",
                 params![
@@ -1060,17 +1005,14 @@ fn goal_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<GoalState> {
         thread_id: row.get(1)?,
         objective: row.get(2)?,
         status,
-        token_budget: row
-            .get::<_, Option<i64>>(4)?
-            .map(|value| value.max(0) as u64),
-        input_tokens: row.get::<_, i64>(5)?.max(0) as u64,
-        output_tokens: row.get::<_, i64>(6)?.max(0) as u64,
-        turns: row.get::<_, i64>(7)?.max(0) as u64,
-        blocked_attempts: row.get::<_, i64>(8)?.clamp(0, u32::MAX as i64) as u32,
-        last_blocker: row.get(9)?,
-        audit_note: row.get(10)?,
-        created_at: row.get(11)?,
-        updated_at: row.get(12)?,
+        input_tokens: row.get::<_, i64>(4)?.max(0) as u64,
+        output_tokens: row.get::<_, i64>(5)?.max(0) as u64,
+        turns: row.get::<_, i64>(6)?.max(0) as u64,
+        blocked_attempts: row.get::<_, i64>(7)?.clamp(0, u32::MAX as i64) as u32,
+        last_blocker: row.get(8)?,
+        audit_note: row.get(9)?,
+        created_at: row.get(10)?,
+        updated_at: row.get(11)?,
     })
 }
 
@@ -1395,18 +1337,56 @@ mod tests {
         );
     }
 
-    fn goal_request(budget: Option<u64>) -> GoalCreateRequest {
+    fn goal_request() -> GoalCreateRequest {
         GoalCreateRequest {
             thread_id: "thread-goal".to_owned(),
             objective: "Implement and verify the requested feature.".to_owned(),
-            token_budget: budget,
         }
+    }
+
+    #[test]
+    fn legacy_goal_budget_column_is_ignored() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE goals (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    thread_id TEXT NOT NULL UNIQUE,
+                    objective TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    token_budget INTEGER,
+                    input_tokens INTEGER NOT NULL DEFAULT 0,
+                    output_tokens INTEGER NOT NULL DEFAULT 0,
+                    turns INTEGER NOT NULL DEFAULT 0,
+                    blocked_attempts INTEGER NOT NULL DEFAULT 0,
+                    last_blocker TEXT,
+                    audit_note TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                 );
+                 INSERT INTO goals
+                    (id, thread_id, objective, status, token_budget, input_tokens,
+                     output_tokens, turns, blocked_attempts, created_at, updated_at)
+                 VALUES
+                    ('legacy-goal', 'thread-goal', 'Finish the migration.', 'active',
+                     1000, 800, 100, 1, 0, 1, 2);",
+            )
+            .unwrap();
+        let database = Database::from_connection(connection).unwrap();
+        let goal = database
+            .record_goal_usage("thread-goal", 100, 100)
+            .unwrap()
+            .unwrap();
+        assert_eq!(goal.status, GoalStatus::Active);
+        assert_eq!(goal.input_tokens, 900);
+        assert_eq!(goal.output_tokens, 200);
+        assert_eq!(goal.turns, 2);
     }
 
     #[test]
     fn goal_completion_requires_a_separate_audit() {
         let database = Database::from_connection(Connection::open_in_memory().unwrap()).unwrap();
-        let created = database.create_goal(&goal_request(Some(10_000))).unwrap();
+        let created = database.create_goal(&goal_request()).unwrap();
         assert_eq!(created.status, GoalStatus::Active);
         let auditing = database
             .update_goal_from_agent(
@@ -1429,7 +1409,7 @@ mod tests {
     #[test]
     fn goal_blocks_only_after_three_identical_reports() {
         let database = Database::from_connection(Connection::open_in_memory().unwrap()).unwrap();
-        database.create_goal(&goal_request(None)).unwrap();
+        database.create_goal(&goal_request()).unwrap();
         let reason = "Required external service is unavailable after all safe retries.";
         for attempt in 1..=3 {
             let goal = database
@@ -1448,20 +1428,16 @@ mod tests {
     }
 
     #[test]
-    fn goal_pauses_when_token_budget_is_reached_and_can_resume() {
+    fn goal_usage_is_recorded_without_pausing() {
         let database = Database::from_connection(Connection::open_in_memory().unwrap()).unwrap();
-        database.create_goal(&goal_request(Some(1_000))).unwrap();
+        database.create_goal(&goal_request()).unwrap();
         let goal = database
             .record_goal_usage("thread-goal", 800, 200)
             .unwrap()
             .unwrap();
-        assert_eq!(goal.status, GoalStatus::Paused);
+        assert_eq!(goal.status, GoalStatus::Active);
+        assert_eq!(goal.input_tokens, 800);
+        assert_eq!(goal.output_tokens, 200);
         assert_eq!(goal.turns, 1);
-        let resumed = database.set_goal_status("thread-goal", "resume").unwrap();
-        assert_eq!(resumed.status, GoalStatus::Active);
-        let extended = database
-            .set_goal_budget("thread-goal", Some(2_000))
-            .unwrap();
-        assert_eq!(extended.token_budget, Some(2_000));
     }
 }

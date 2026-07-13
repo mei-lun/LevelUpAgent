@@ -263,7 +263,6 @@ export interface GoalState {
   threadId: string;
   objective: string;
   status: GoalStatus;
-  tokenBudget?: number;
   inputTokens: number;
   outputTokens: number;
   turns: number;
