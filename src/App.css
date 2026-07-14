@@ -729,6 +729,8 @@ button.detail-row { padding: 0; border: 0; background: transparent; text-align: 
 .protocol-help { display: block; margin-top: 6px; color: var(--muted); font-size: var(--font-compact); line-height: 1.45; }
 .endpoint-preview { overflow: hidden; color: var(--muted); font-family: "SFMono-Regular", Consolas, monospace; font-size: var(--font-compact); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .connection-test .secondary-button { align-self: flex-start; }
+.model-id-control { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 36px; gap: 6px; }
+.model-id-control .model-id-clear { width: 36px; height: 36px; flex-basis: 36px; border: 1px solid var(--line-strong); background: #fff; }
 .failover-toggle.wide, .provider-health.wide, .config-writeback.wide { grid-column: 1 / -1; }
 .failover-toggle { min-width: 0; display: flex; align-items: flex-start; gap: 9px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.45); color: #51544f; cursor: pointer; }
 .failover-toggle input { width: 15px; height: 15px; flex: 0 0 auto; margin-top: 1px; accent-color: var(--accent); }
@@ -781,6 +783,8 @@ button.detail-row { padding: 0; border: 0; background: transparent; text-align: 
 .connection-dialog .field > span { min-height: 17px; line-height: 1.4; }
 .connection-dialog .field > span small { font-size: var(--font-small); }
 .connection-dialog .field input, .connection-dialog .field select { height: 42px; font-size: var(--font-control); }
+.connection-dialog .model-id-control { grid-template-columns: minmax(0, 1fr) 42px; }
+.connection-dialog .model-id-control .model-id-clear { width: 42px; height: 42px; flex-basis: 42px; }
 .connection-dialog .migration-heading { font-size: var(--font-body); }
 .connection-dialog .migration-heading small, .connection-dialog .migration-source, .connection-dialog .migration-detail small, .connection-dialog .migration-ready, .connection-dialog .migration-warning { font-size: var(--font-caption); }
 .connection-dialog .migration-detail strong { font-size: var(--font-body); }
@@ -1354,7 +1358,7 @@ button.detail-row { padding: 0; border: 0; background: transparent; text-align: 
   .failover-toggle, .provider-health, .config-writeback { background: rgba(255,255,255,.025); }
   .provider-health-metrics > span, .gateway-diagnostics span { background: rgba(255,255,255,.035); }
   .config-writeback select { background: #30332f; }
-  .new-task-button, .workspace-button, .model-pill, .tool-call, .subagent-result, .composer, .secondary-button, .field input, .field textarea, .field select, .connection-picker select, .migration-row, .protocol-switch button.active, .mode-switch button.active, .mcp-server-row.active { background: #30332f; color: var(--text); }
+  .new-task-button, .workspace-button, .model-pill, .tool-call, .subagent-result, .composer, .secondary-button, .field input, .field textarea, .field select, .model-id-control .model-id-clear, .connection-picker select, .migration-row, .protocol-switch button.active, .mode-switch button.active, .mcp-server-row.active { background: #30332f; color: var(--text); }
   .model-menu { border-color: rgba(255,255,255,.1); background: rgba(43,46,42,.98); }
   .permission-button { border-color: rgba(255,255,255,.09); background: rgba(255,255,255,.04); }
   .permission-button:hover:not(:disabled) { border-color: rgba(255,255,255,.16); background: rgba(255,255,255,.07); color: var(--text); }

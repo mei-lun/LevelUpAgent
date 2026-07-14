@@ -2668,19 +2668,29 @@ function ConnectionDialog({
             <input type="checkbox" checked={draftProfile.allowUnauthenticated} onChange={(event) => update("allowUnauthenticated", event.target.checked)} />
             <span><strong>{tr("允许无 API Key", "Allow connection without an API key")}</strong><small>{tr("仅用于你信任的本机或局域网服务；如果已保存密钥，仍会优先发送密钥。", "Use only with a trusted local or LAN service. A saved key is still sent when present.")}</small></span>
           </label>
-          <label className="field">
+          <div className="field">
             <span>{tr("模型", "Model")}</span>
-            <input
-              aria-label={tr("模型 ID", "Model ID")}
-              list={`provider-models-${draftProfile.id}`}
-              value={draftProfile.model}
-              onChange={(event) => update("model", event.target.value)}
-              placeholder={tr("可手动输入模型 ID", "Enter a model ID")}
-            />
+            <div className="model-id-control">
+              <input
+                aria-label={tr("模型 ID", "Model ID")}
+                list={`provider-models-${draftProfile.id}`}
+                value={draftProfile.model}
+                onChange={(event) => update("model", event.target.value)}
+                placeholder={tr("可手动输入模型 ID", "Enter a model ID")}
+              />
+              <IconButton
+                className="model-id-clear"
+                label={tr("清空模型 ID", "Clear model ID")}
+                disabled={!draftProfile.model}
+                onClick={() => update("model", "")}
+              >
+                <X size={16} />
+              </IconButton>
+            </div>
             <datalist id={`provider-models-${draftProfile.id}`}>
               {models.map((item) => <option value={item.id} key={item.id} />)}
             </datalist>
-          </label>
+          </div>
           <div className="field connection-test">
             <span>{tr("连接检查", "Connection check")}</span>
             <button className="secondary-button" onClick={testModels} disabled={busy}>
