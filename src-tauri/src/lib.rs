@@ -367,7 +367,7 @@ fn attach_media_tools(request: &mut AgentTurnRequest) {
                     "count": { "type": "integer", "minimum": 1, "maximum": 8, "default": 1 },
                     "model": { "type": "string", "description": "Optional explicit image model; omit to use the newest recommended model" },
                     "profileId": { "type": "string", "description": "Optional configured connection ID" },
-                    "size": { "type": "string", "description": "Examples: 1024x1024, 1536x1024, 1024x1536, 16:9, 9:16, 21:9, 9:21. The backend reinforces recognized sizes and aspect ratios in the effective image prompt." },
+                    "size": { "type": "string", "default": "auto", "description": "Image size or aspect ratio. Examples: auto, 1024x1024, 1536x1024, 1024x1536, 2048x2048, 2048x1152, 1152x2048, 3840x2160, 2160x3840, 16:9, 9:16, 21:9, 9:21. The backend reinforces recognized sizes and aspect ratios in the effective image prompt." },
                     "quality": { "type": "string", "description": "Provider-specific quality such as auto, high, medium, 2K, or 4K" },
                     "outputFormat": { "type": "string", "enum": ["png", "jpeg", "webp"] },
                     "background": { "type": "string", "enum": ["auto", "transparent", "opaque"], "description": "Set transparent only when the user explicitly requests a transparent background; omit it otherwise. Model compatibility is enforced by the media backend." },

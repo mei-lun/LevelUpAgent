@@ -1159,8 +1159,19 @@ button.detail-row { padding: 0; border: 0; background: transparent; text-align: 
 .media-image-lightbox-dialog > header button { width: 38px; height: 38px; flex: 0 0 auto; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.72); color: var(--muted); cursor: pointer; }
 .media-image-lightbox-dialog > header button:hover { border-color: rgba(244,63,94,.25); background: var(--danger-soft); color: #e11d48; }
 .media-image-lightbox-dialog > header button:focus-visible { outline: 3px solid rgba(244,63,94,.2); }
-.media-image-lightbox-canvas { min-width: 0; min-height: 0; overflow: hidden; display: grid; place-items: center; padding: clamp(8px, 1.4vw, 18px); background-color: #dfe5ec; background-image: linear-gradient(45deg, rgba(255,255,255,.68) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,.68) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,.68) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.68) 75%); background-position: 0 0, 0 10px, 10px -10px, -10px 0; background-size: 20px 20px; cursor: zoom-out; }
-.media-image-lightbox-canvas img { max-width: 100%; max-height: 100%; width: auto; height: auto; display: block; object-fit: contain; border-radius: 5px; background: #0f172a; box-shadow: 0 14px 42px rgba(15,23,42,.22); cursor: default; }
+.media-image-lightbox-canvas { position: relative; min-width: 0; min-height: 0; overflow: hidden; outline: none; background-color: #dfe5ec; background-image: linear-gradient(45deg, rgba(255,255,255,.68) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,.68) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,.68) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.68) 75%); background-position: 0 0, 0 10px, 10px -10px, -10px 0; background-size: 20px 20px; cursor: grab; touch-action: none; user-select: none; }
+.media-image-lightbox-canvas:focus-visible { box-shadow: inset 0 0 0 3px rgba(14,165,233,.42); }
+.media-image-lightbox-canvas.dragging { cursor: grabbing; }
+.media-image-lightbox-canvas img { position: absolute; left: 50%; top: 50%; max-width: none; max-height: none; display: block; transform: translate(-50%, -50%); object-fit: contain; border-radius: 5px; background: #0f172a; box-shadow: 0 14px 42px rgba(15,23,42,.22); pointer-events: none; user-select: none; will-change: left, top, width, height; }
+.media-image-lightbox-toolbar { position: absolute; left: 50%; bottom: 14px; z-index: 2; display: flex; align-items: center; gap: 3px; padding: 5px; transform: translateX(-50%); border: 1px solid rgba(148,163,184,.35); border-radius: 12px; background: rgba(255,255,255,.88); box-shadow: 0 8px 28px rgba(15,23,42,.18); backdrop-filter: blur(14px) saturate(125%); cursor: default; }
+.media-image-lightbox-toolbar button { min-width: 31px; height: 31px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: #475569; font: inherit; font-size: var(--font-caption); cursor: pointer; }
+.media-image-lightbox-toolbar button:hover:not(:disabled) { background: rgba(14,165,233,.1); color: #0369a1; }
+.media-image-lightbox-toolbar button:focus-visible { outline: 2px solid rgba(14,165,233,.38); outline-offset: -1px; }
+.media-image-lightbox-toolbar button:disabled { cursor: default; opacity: .38; }
+.media-image-lightbox-toolbar i { width: 1px; height: 19px; margin-inline: 3px; background: rgba(100,116,139,.24); }
+.media-image-lightbox-toolbar output { min-width: 48px; color: #475569; font-family: "SFMono-Regular", Consolas, monospace; font-size: var(--font-caption); text-align: center; }
+.media-image-pan-hint { position: absolute; left: 50%; top: 12px; z-index: 2; display: flex; align-items: center; gap: 6px; padding: 6px 9px; transform: translateX(-50%); border: 1px solid rgba(148,163,184,.25); border-radius: 999px; background: rgba(255,255,255,.76); box-shadow: 0 4px 16px rgba(15,23,42,.1); backdrop-filter: blur(10px); color: #64748b; font-size: var(--font-caption); white-space: nowrap; pointer-events: none; transition: opacity .16s ease; }
+.media-image-lightbox-canvas.dragging .media-image-pan-hint { opacity: 0; }
 .media-image-lightbox-dialog > footer { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 0 16px; border-top: 1px solid var(--line); }
 .media-image-lightbox-dialog > footer > div { display: flex; align-items: center; gap: 6px; }
 .media-image-lightbox-dialog > footer span { padding: 3px 7px; border-radius: 6px; background: rgba(15,23,42,.055); color: var(--muted); font-family: "SFMono-Regular", Consolas, monospace; font-size: var(--font-compact); }
@@ -1345,6 +1356,10 @@ button.detail-row { padding: 0; border: 0; background: transparent; text-align: 
   .media-image-lightbox-dialog > header { padding-left: 11px; }
   .media-image-lightbox-dialog > header > div { gap: 7px; }
   .media-image-lightbox-dialog > header p { font-size: var(--font-caption); }
+  .media-image-lightbox-toolbar { bottom: 8px; }
+  .media-image-lightbox-toolbar button span { display: none; }
+  .media-image-pan-hint { top: 8px; max-width: calc(100% - 20px); }
+  .media-image-pan-hint span { overflow: hidden; text-overflow: ellipsis; }
   .media-image-lightbox-dialog > footer { padding-inline: 10px; }
   .media-image-lightbox-dialog > footer small { text-align: right; }
 }
@@ -1480,6 +1495,11 @@ button.detail-row { padding: 0; border: 0; background: transparent; text-align: 
   .media-image-lightbox-dialog { border-color: rgba(226,232,240,.15); background: rgba(15,23,42,.98); }
   .media-image-lightbox-dialog > header button { border-color: rgba(226,232,240,.12); background: rgba(255,255,255,.045); color: #cbd5e1; }
   .media-image-lightbox-canvas { background-color: #111827; background-image: linear-gradient(45deg, rgba(255,255,255,.045) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,.045) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,.045) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.045) 75%); }
+  .media-image-lightbox-toolbar { border-color: rgba(226,232,240,.16); background: rgba(15,23,42,.86); box-shadow: 0 8px 28px rgba(0,0,0,.3); }
+  .media-image-lightbox-toolbar button, .media-image-lightbox-toolbar output { color: #cbd5e1; }
+  .media-image-lightbox-toolbar button:hover:not(:disabled) { background: rgba(56,189,248,.14); color: #7dd3fc; }
+  .media-image-lightbox-toolbar i { background: rgba(226,232,240,.16); }
+  .media-image-pan-hint { border-color: rgba(226,232,240,.13); background: rgba(15,23,42,.72); color: #cbd5e1; box-shadow: 0 4px 16px rgba(0,0,0,.24); }
   .media-image-lightbox-dialog > footer span { background: rgba(255,255,255,.06); }
   .audio-preview { background: radial-gradient(circle at 50% 20%, rgba(244,63,94,.16), transparent 52%), linear-gradient(145deg, #1e293b, #111827); color: #fda4af; }
   .media-asset-content em { color: #fda4af; }

@@ -1816,6 +1816,11 @@ fn image_output_requirement(size: &str) -> Option<&'static str> {
         "1024x1536" | "2:3" | "portrait" => {
             Some("render at 1024x1536 pixels with a 2:3 portrait aspect ratio")
         }
+        "2048x2048" => Some("render at 2048x2048 pixels with a 1:1 aspect ratio"),
+        "2048x1152" => Some("render at 2048x1152 pixels with a 16:9 landscape aspect ratio"),
+        "1152x2048" => Some("render at 1152x2048 pixels with a 9:16 portrait aspect ratio"),
+        "3840x2160" => Some("render at 3840x2160 pixels with a 16:9 landscape aspect ratio"),
+        "2160x3840" => Some("render at 2160x3840 pixels with a 9:16 portrait aspect ratio"),
         "16:9" => Some("use an exact 16:9 widescreen aspect ratio"),
         "9:16" => Some("use an exact 9:16 portrait aspect ratio"),
         "21:9" => Some("use an exact 21:9 ultrawide aspect ratio"),
@@ -1829,8 +1834,9 @@ fn gemini_aspect_ratio(size: &str) -> Option<&'static str> {
         "1024x1024" | "1:1" | "square" => Some("1:1"),
         "1536x1024" | "3:2" | "landscape" => Some("3:2"),
         "1024x1536" | "2:3" | "portrait" => Some("2:3"),
-        "16:9" => Some("16:9"),
-        "9:16" => Some("9:16"),
+        "2048x2048" => Some("1:1"),
+        "2048x1152" | "3840x2160" | "16:9" => Some("16:9"),
+        "1152x2048" | "2160x3840" | "9:16" => Some("9:16"),
         "21:9" => Some("21:9"),
         "9:21" => Some("9:21"),
         _ => None,
@@ -2110,6 +2116,15 @@ mod tests {
 
         request.size = Some("1024x1536".to_owned());
         assert!(effective_image_prompt(&request).contains("1024x1536 pixels"));
+        request.size = Some("2048x1152".to_owned());
+        assert!(effective_image_prompt(&request).contains("2048x1152 pixels"));
+        assert_eq!(gemini_aspect_ratio("2048x1152"), Some("16:9"));
+        assert_eq!(gemini_aspect_ratio("1152x2048"), Some("9:16"));
+        assert_eq!(gemini_aspect_ratio("2048x2048"), Some("1:1"));
+        assert_eq!(gemini_aspect_ratio("3840x2160"), Some("16:9"));
+        assert_eq!(gemini_aspect_ratio("2160x3840"), Some("9:16"));
+        request.size = Some("auto".to_owned());
+        assert_eq!(effective_image_prompt(&request), "A cinematic city");
         request.size = None;
         assert_eq!(effective_image_prompt(&request), "A cinematic city");
     }

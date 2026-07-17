@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   AudioLines,
@@ -11,6 +19,7 @@ import {
   ImagePlus,
   LoaderCircle,
   Maximize2,
+  Move,
   Plus,
   RefreshCw,
   Settings2,
@@ -19,6 +28,8 @@ import {
   Video,
   WandSparkles,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import {
   deleteImageAttachment,
@@ -53,6 +64,19 @@ type StudioMediaAsset = MediaAsset & {
   pendingOutput?: { index: number; total: number };
 };
 
+interface PreviewPoint {
+  x: number;
+  y: number;
+}
+
+interface PreviewTransform extends PreviewPoint {
+  zoom: number;
+}
+
+const MIN_PREVIEW_ZOOM = 0.05;
+const MAX_PREVIEW_ZOOM = 4;
+const PREVIEW_ZOOM_STEP = 1.2;
+
 interface MediaStudioProps {
   active: boolean;
   locale: string;
@@ -68,7 +92,24 @@ const KIND_TABS: Array<{ kind: MediaKind; icon: typeof Image }> = [
   { kind: "video", icon: Video },
   { kind: "audio", icon: AudioLines },
 ];
-const IMAGE_SIZE_OPTIONS = ["1024x1024", "1536x1024", "1024x1536", "16:9", "9:16", "21:9", "9:21"];
+interface ImageDimensionOption {
+  value: string;
+  ratio: string;
+  experimental?: boolean;
+}
+
+const IMAGE_DIMENSION_OPTIONS: ImageDimensionOption[] = [
+  { value: "1024x1024", ratio: "1:1" },
+  { value: "1536x1024", ratio: "3:2" },
+  { value: "1024x1536", ratio: "2:3" },
+  { value: "2048x1152", ratio: "16:9" },
+  { value: "1152x2048", ratio: "9:16" },
+  { value: "2048x2048", ratio: "1:1", experimental: true },
+  { value: "3840x2160", ratio: "16:9", experimental: true },
+  { value: "2160x3840", ratio: "9:16", experimental: true },
+];
+const IMAGE_RATIO_OPTIONS = ["16:9", "9:16", "21:9", "9:21"];
+const IMAGE_SIZE_OPTIONS = ["auto", ...IMAGE_DIMENSION_OPTIONS.map((option) => option.value), ...IMAGE_RATIO_OPTIONS];
 const VIDEO_SIZE_OPTIONS = ["1280x720", "720x1280", "16:9", "9:16"];
 
 export function MediaStudio({ active, locale, dropActive, referenceDrop, onReferenceDropHandled, onConfigureConnection, onPendingCountChange }: MediaStudioProps) {
@@ -83,7 +124,7 @@ export function MediaStudio({ active, locale, dropActive, referenceDrop, onRefer
   ]);
   const [references, setReferences] = useState<ImageAttachment[]>([]);
   const [count, setCount] = useState(1);
-  const [size, setSize] = useState("1024x1024");
+  const [size, setSize] = useState("auto");
   const [quality, setQuality] = useState("auto");
   const [outputFormat, setOutputFormat] = useState("png");
   const [background, setBackground] = useState("auto");
@@ -152,7 +193,7 @@ export function MediaStudio({ active, locale, dropActive, referenceDrop, onRefer
 
   useEffect(() => {
     if (kind === "image") {
-      setSize((current) => IMAGE_SIZE_OPTIONS.includes(current) ? current : "1024x1024");
+      setSize((current) => IMAGE_SIZE_OPTIONS.includes(current) ? current : "auto");
       setOutputFormat((current) => ["png", "webp", "jpeg"].includes(current) ? current : "png");
     } else if (kind === "video") {
       setSize((current) => VIDEO_SIZE_OPTIONS.includes(current) ? current : "1280x720");
@@ -436,7 +477,21 @@ export function MediaStudio({ active, locale, dropActive, referenceDrop, onRefer
           <div className="media-options-grid">
             {kind !== "audio" && (
               <label><span>{tr("尺寸 / 比例", "Size / ratio")}</span><select value={size} onChange={(event) => setSize(event.target.value)}>
-                {(kind === "image" ? IMAGE_SIZE_OPTIONS : VIDEO_SIZE_OPTIONS).map((value) => <option key={value}>{value}</option>)}
+                {kind === "image" ? (
+                  <>
+                    <option value="auto">{tr("auto（模型自动，推荐）", "auto (model decides, recommended)")}</option>
+                    <optgroup label={tr("像素尺寸", "Pixel dimensions")}>
+                      {IMAGE_DIMENSION_OPTIONS.map((option) => (
+                        <option value={option.value} key={option.value}>
+                          {option.value.replace("x", " × ")} · {option.ratio}{option.experimental ? tr(" · 实验性", " · Experimental") : ""}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label={tr("仅指定构图比例", "Aspect ratio only")}>
+                      {IMAGE_RATIO_OPTIONS.map((value) => <option value={value} key={value}>{value}</option>)}
+                    </optgroup>
+                  </>
+                ) : VIDEO_SIZE_OPTIONS.map((value) => <option value={value} key={value}>{value}</option>)}
               </select></label>
             )}
             {kind === "image" && <label><span>{tr("质量", "Quality")}</span><select value={quality} onChange={(event) => setQuality(event.target.value)}>{["auto", "high", "medium", "2K", "4K"].map((value) => <option key={value}>{value}</option>)}</select></label>}
@@ -574,6 +629,18 @@ export function MediaAssetCard({ asset, locale, onDelete, onPreview }: { asset: 
 
 function MediaImagePreview({ asset, locale, onClose }: { asset: MediaAsset; locale: string; onClose: () => void }) {
   const url = mediaAssetUrl(asset);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const [view, setView] = useState<PreviewTransform>({ zoom: 1, x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const imageReady = imageSize.width > 0 && imageSize.height > 0;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -582,6 +649,141 @@ function MediaImagePreview({ asset, locale, onClose }: { asset: MediaAsset; loca
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setView((current) => {
+        const offset = constrainPreviewOffset(current, current.zoom, imageSize, canvasRef.current);
+        return { ...current, ...offset };
+      });
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [imageSize.height, imageSize.width]);
+
+  const applyZoom = (requestedZoom: number, anchor: PreviewPoint = { x: 0, y: 0 }) => {
+    setView((current) => {
+      const zoom = Math.min(MAX_PREVIEW_ZOOM, Math.max(MIN_PREVIEW_ZOOM, requestedZoom));
+      const ratio = zoom / current.zoom;
+      const candidate = {
+        x: anchor.x - (anchor.x - current.x) * ratio,
+        y: anchor.y - (anchor.y - current.y) * ratio,
+      };
+      const offset = constrainPreviewOffset(candidate, zoom, imageSize, canvasRef.current);
+      return { zoom, ...offset };
+    });
+  };
+
+  const showActualSize = () => {
+    setView({ zoom: 1, x: 0, y: 0 });
+  };
+
+  const fitImage = () => {
+    const bounds = canvasRef.current?.getBoundingClientRect();
+    if (!bounds || !imageReady) return;
+    const zoom = Math.min(
+      1,
+      Math.max(
+        MIN_PREVIEW_ZOOM,
+        Math.min((bounds.width - 32) / imageSize.width, (bounds.height - 32) / imageSize.height),
+      ),
+    );
+    setView({ zoom, x: 0, y: 0 });
+  };
+
+  const panBy = (x: number, y: number) => {
+    setView((current) => {
+      const offset = constrainPreviewOffset(
+        { x: current.x + x, y: current.y + y },
+        current.zoom,
+        imageSize,
+        canvasRef.current,
+      );
+      return { ...current, ...offset };
+    });
+  };
+
+  const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !imageReady) return;
+    if ((event.target as Element).closest(".media-image-lightbox-toolbar")) return;
+    event.preventDefault();
+    event.currentTarget.focus();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: view.x,
+      originY: view.y,
+    };
+    setDragging(true);
+  };
+
+  const moveDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    setView((current) => {
+      const offset = constrainPreviewOffset(
+        {
+          x: drag.originX + event.clientX - drag.startX,
+          y: drag.originY + event.clientY - drag.startY,
+        },
+        current.zoom,
+        imageSize,
+        canvasRef.current,
+      );
+      return { ...current, ...offset };
+    });
+  };
+
+  const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    dragRef.current = null;
+    setDragging(false);
+  };
+
+  const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (!imageReady || (event.target as Element).closest(".media-image-lightbox-toolbar")) return;
+    event.preventDefault();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const anchor = {
+      x: event.clientX - bounds.left - bounds.width / 2,
+      y: event.clientY - bounds.top - bounds.height / 2,
+    };
+    applyZoom(view.zoom * (event.deltaY < 0 ? PREVIEW_ZOOM_STEP : 1 / PREVIEW_ZOOM_STEP), anchor);
+  };
+
+  const handleCanvasKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "+" || event.key === "=") {
+      event.preventDefault();
+      applyZoom(view.zoom * PREVIEW_ZOOM_STEP);
+    } else if (event.key === "-") {
+      event.preventDefault();
+      applyZoom(view.zoom / PREVIEW_ZOOM_STEP);
+    } else if (event.key === "0") {
+      event.preventDefault();
+      showActualSize();
+    } else if (event.key.toLocaleLowerCase() === "f") {
+      event.preventDefault();
+      fitImage();
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      panBy(56, 0);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      panBy(-56, 0);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      panBy(0, 56);
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      panBy(0, -56);
+    }
+  };
 
   if (!url) return null;
   const createdAt = new Intl.DateTimeFormat(locale, {
@@ -604,10 +806,49 @@ function MediaImagePreview({ asset, locale, onClose }: { asset: MediaAsset; loca
           </div>
           <button type="button" autoFocus onClick={onClose} aria-label={tr("关闭预览", "Close preview")} title={`${tr("关闭预览", "Close preview")} (Esc)`}><X size={19} /></button>
         </header>
-        <div className="media-image-lightbox-canvas" onMouseDown={(event) => {
-          if (event.target === event.currentTarget) onClose();
-        }}>
-          <img src={url} alt={asset.revisedPrompt || asset.prompt} />
+        <div
+          ref={canvasRef}
+          className={`media-image-lightbox-canvas${dragging ? " dragging" : ""}`}
+          role="region"
+          aria-label={tr("图片查看区域，可拖动图片并使用滚轮缩放", "Image viewer; drag the image and use the wheel to zoom")}
+          tabIndex={0}
+          onPointerDown={beginDrag}
+          onPointerMove={moveDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onLostPointerCapture={endDrag}
+          onWheel={handleWheel}
+          onKeyDown={handleCanvasKeyDown}
+          onDoubleClick={(event) => {
+            if ((event.target as Element).closest(".media-image-lightbox-toolbar")) return;
+            if (Math.abs(view.zoom - 1) < 0.01) fitImage();
+            else showActualSize();
+          }}
+        >
+          <img
+            src={url}
+            alt={asset.revisedPrompt || asset.prompt}
+            draggable={false}
+            onLoad={(event) => {
+              setImageSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight });
+              setView({ zoom: 1, x: 0, y: 0 });
+            }}
+            style={imageReady ? {
+              width: imageSize.width * view.zoom,
+              height: imageSize.height * view.zoom,
+              left: `calc(50% + ${view.x}px)`,
+              top: `calc(50% + ${view.y}px)`,
+            } : undefined}
+          />
+          <div className="media-image-lightbox-toolbar" role="toolbar" aria-label={tr("图片缩放控制", "Image zoom controls")}>
+            <button type="button" disabled={!imageReady} onClick={fitImage} title={`${tr("适应窗口", "Fit to window")} (F)`}><Maximize2 size={14} /><span>{tr("适应窗口", "Fit")}</span></button>
+            <button type="button" disabled={!imageReady} onClick={() => showActualSize()} title={`${tr("原始大小", "Actual size")} (0)`}>1:1</button>
+            <i aria-hidden="true" />
+            <button type="button" disabled={!imageReady || view.zoom <= MIN_PREVIEW_ZOOM} onClick={() => applyZoom(view.zoom / PREVIEW_ZOOM_STEP)} aria-label={tr("缩小", "Zoom out")} title={tr("缩小", "Zoom out")}><ZoomOut size={15} /></button>
+            <output aria-live="polite">{Math.round(view.zoom * 100)}%</output>
+            <button type="button" disabled={!imageReady || view.zoom >= MAX_PREVIEW_ZOOM} onClick={() => applyZoom(view.zoom * PREVIEW_ZOOM_STEP)} aria-label={tr("放大", "Zoom in")} title={tr("放大", "Zoom in")}><ZoomIn size={15} /></button>
+          </div>
+          <div className="media-image-pan-hint" aria-hidden="true"><Move size={14} /><span>{tr("拖动查看 · 滚轮缩放 · 双击切换", "Drag to pan · wheel to zoom · double-click to toggle")}</span></div>
         </div>
         <footer>
           <div>
@@ -621,6 +862,22 @@ function MediaImagePreview({ asset, locale, onClose }: { asset: MediaAsset; loca
     </div>,
     document.body,
   );
+}
+
+function constrainPreviewOffset(
+  point: PreviewPoint,
+  zoom: number,
+  imageSize: { width: number; height: number },
+  canvas: HTMLDivElement | null,
+): PreviewPoint {
+  if (!canvas || imageSize.width <= 0 || imageSize.height <= 0) return { x: 0, y: 0 };
+  const bounds = canvas.getBoundingClientRect();
+  const maxX = Math.max(0, (imageSize.width * zoom - bounds.width) / 2);
+  const maxY = Math.max(0, (imageSize.height * zoom - bounds.height) / 2);
+  return {
+    x: Math.min(maxX, Math.max(-maxX, point.x)),
+    y: Math.min(maxY, Math.max(-maxY, point.y)),
+  };
 }
 
 function modelKey(model: MediaModelInfo) {
