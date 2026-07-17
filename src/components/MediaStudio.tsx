@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   AudioLines,
   Check,
   CircleAlert,
   Clock3,
+  Copy,
   Download,
   Image,
   ImagePlus,
   LoaderCircle,
+  Maximize2,
   Plus,
   RefreshCw,
   Settings2,
@@ -24,12 +27,14 @@ import {
   generateMedia,
   getMediaCatalog,
   importAttachments,
+  importClipboardImages,
   listMediaAssets,
   mediaAssetUrl,
   refreshMediaAsset,
   selectImageReferences,
 } from "../lib/bridge";
 import { tr } from "../lib/i18n";
+import { copyText } from "../lib/clipboard";
 import type {
   ImageAttachment,
   MediaAsset,
@@ -44,12 +49,18 @@ interface PromptDraft {
   prompt: string;
 }
 
+type StudioMediaAsset = MediaAsset & {
+  pendingOutput?: { index: number; total: number };
+};
+
 interface MediaStudioProps {
+  active: boolean;
   locale: string;
   dropActive: boolean;
   referenceDrop: { id: string; paths: string[] } | null;
   onReferenceDropHandled: (id: string) => void;
   onConfigureConnection: () => void;
+  onPendingCountChange: (count: number) => void;
 }
 
 const KIND_TABS: Array<{ kind: MediaKind; icon: typeof Image }> = [
@@ -57,11 +68,15 @@ const KIND_TABS: Array<{ kind: MediaKind; icon: typeof Image }> = [
   { kind: "video", icon: Video },
   { kind: "audio", icon: AudioLines },
 ];
+const IMAGE_SIZE_OPTIONS = ["1024x1024", "1536x1024", "1024x1536", "16:9", "9:16", "21:9", "9:21"];
+const VIDEO_SIZE_OPTIONS = ["1280x720", "720x1280", "16:9", "9:16"];
 
-export function MediaStudio({ locale, dropActive, referenceDrop, onReferenceDropHandled, onConfigureConnection }: MediaStudioProps) {
+export function MediaStudio({ active, locale, dropActive, referenceDrop, onReferenceDropHandled, onConfigureConnection, onPendingCountChange }: MediaStudioProps) {
+  const rootRef = useRef<HTMLElement>(null);
   const [kind, setKind] = useState<MediaKind>("image");
   const [catalog, setCatalog] = useState<Awaited<ReturnType<typeof getMediaCatalog>> | null>(null);
   const [assets, setAssets] = useState<MediaAsset[]>([]);
+  const [pendingAssets, setPendingAssets] = useState<StudioMediaAsset[]>([]);
   const [selectedModels, setSelectedModels] = useState<Partial<Record<MediaKind, string>>>({});
   const [prompts, setPrompts] = useState<PromptDraft[]>([
     { id: crypto.randomUUID(), prompt: "" },
@@ -79,6 +94,8 @@ export function MediaStudio({ locale, dropActive, referenceDrop, onReferenceDrop
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [pastingReferences, setPastingReferences] = useState(false);
+  const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
 
   const models = useMemo(
     () => (catalog?.models ?? []).filter((model) => model.kind === kind),
@@ -90,6 +107,8 @@ export function MediaStudio({ locale, dropActive, referenceDrop, onReferenceDrop
     ?? models[0];
   const transparentBackgroundSupported = !selected?.id.toLocaleLowerCase().includes("gpt-image-2");
   const visibleAssets = assets.filter((asset) => asset.kind === kind);
+  const visiblePendingAssets = pendingAssets.filter((asset) => asset.kind === kind);
+  const displayedAssets: StudioMediaAsset[] = [...visiblePendingAssets, ...visibleAssets];
   const pendingVideoIds = assets
     .filter((asset) => asset.kind === "video" && (asset.status === "queued" || asset.status === "in_progress"))
     .map((asset) => asset.id);
@@ -128,11 +147,15 @@ export function MediaStudio({ locale, dropActive, referenceDrop, onReferenceDrop
   }, [transparentBackgroundSupported]);
 
   useEffect(() => {
+    onPendingCountChange(pendingAssets.length);
+  }, [onPendingCountChange, pendingAssets.length]);
+
+  useEffect(() => {
     if (kind === "image") {
-      setSize((current) => ["1024x1024", "1536x1024", "1024x1536", "16:9", "9:16"].includes(current) ? current : "1024x1024");
+      setSize((current) => IMAGE_SIZE_OPTIONS.includes(current) ? current : "1024x1024");
       setOutputFormat((current) => ["png", "webp", "jpeg"].includes(current) ? current : "png");
     } else if (kind === "video") {
-      setSize((current) => ["1280x720", "720x1280", "16:9", "9:16"].includes(current) ? current : "1280x720");
+      setSize((current) => VIDEO_SIZE_OPTIONS.includes(current) ? current : "1280x720");
     } else {
       setOutputFormat((current) => ["mp3", "wav", "aac", "flac", "opus"].includes(current) ? current : "mp3");
     }
@@ -203,14 +226,58 @@ export function MediaStudio({ locale, dropActive, referenceDrop, onReferenceDrop
     await acceptReferences(imported);
   };
 
+  const importPastedReferences = async (files: File[]) => {
+    const available = Math.max(0, 8 - references.length);
+    if (available === 0) {
+      setError(tr("最多添加 8 张参考图", "You can add up to 8 reference images"));
+      return;
+    }
+    const selected = files.slice(0, available);
+    setPastingReferences(true);
+    setError(null);
+    try {
+      const imported = await importClipboardImages(selected);
+      await acceptReferences(imported);
+      if (selected.length < files.length) {
+        setError(tr("最多添加 8 张参考图，超出的图片未粘贴", "You can add up to 8 reference images; extra images were not pasted"));
+      }
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setPastingReferences(false);
+    }
+  };
+
   useEffect(() => {
-    if (!referenceDrop) return;
+    if (!active || !referenceDrop) return;
     setKind("image");
     setError(null);
     void importReferencePaths(referenceDrop.paths)
       .catch((reason) => setError(errorText(reason)))
       .finally(() => onReferenceDropHandled(referenceDrop.id));
-  }, [referenceDrop?.id]);
+  }, [active, referenceDrop?.id]);
+
+  useEffect(() => {
+    if (!active) return;
+    const handlePaste = (event: ClipboardEvent) => {
+      const target = event.target;
+      const root = rootRef.current;
+      const isStudioTarget = target instanceof Node && root?.contains(target);
+      const isPageTarget = target === document.body || target === document.documentElement;
+      if (!isStudioTarget && !isPageTarget) return;
+      const files = clipboardImageFiles(event.clipboardData);
+      if (files.length === 0) return;
+      event.preventDefault();
+      setKind("image");
+      if (pastingReferences) {
+        setError(tr("正在处理上一批粘贴图片", "The previous pasted images are still being processed"));
+        return;
+      }
+      void importPastedReferences(files);
+    };
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [active, pastingReferences, references]);
 
   const removeReference = async (attachment: ImageAttachment) => {
     setReferences((current) => current.filter((item) => item.id !== attachment.id));
@@ -236,14 +303,46 @@ export function MediaStudio({ locale, dropActive, referenceDrop, onReferenceDrop
       seconds: kind === "video" ? seconds : undefined,
       referenceAttachmentIds: kind === "image" ? references.map((item) => item.id) : [],
     };
-    const results = await Promise.allSettled(
-      activePrompts.map((prompt) => generateMedia({ ...base, prompt })),
-    );
-    const generated = results.flatMap((result) => result.status === "fulfilled" ? result.value.assets : []);
-    const failures = results.flatMap((result) => result.status === "rejected" ? [errorText(result.reason)] : result.value.errors);
-    setAssets((current) => mergeAssets(current, generated));
-    if (failures.length > 0) setError(failures.join(" · "));
-    setBusy(false);
+    const tasks = activePrompts.map((prompt) => {
+      const pendingBatchId = `pending-${crypto.randomUUID()}`;
+      const createdAt = Date.now();
+      const placeholders: StudioMediaAsset[] = Array.from({ length: count }, (_, index) => ({
+        id: `${pendingBatchId}-${index + 1}`,
+        batchId: pendingBatchId,
+        providerId: selected.profileId,
+        providerName: selected.profileName,
+        kind,
+        status: "in_progress",
+        prompt,
+        model: selected.id,
+        size: base.size,
+        quality: base.quality,
+        outputFormat: base.outputFormat,
+        voice: base.voice,
+        seconds: base.seconds,
+        createdAt,
+        updatedAt: createdAt,
+        pendingOutput: { index: index + 1, total: count },
+      }));
+      return { pendingBatchId, prompt, placeholders };
+    });
+    setPendingAssets((current) => [...tasks.flatMap((task) => task.placeholders), ...current]);
+
+    try {
+      const results = await Promise.allSettled(tasks.map(async (task) => {
+        try {
+          const result = await generateMedia({ ...base, prompt: task.prompt });
+          setAssets((current) => mergeAssets(current, result.assets));
+          return result;
+        } finally {
+          setPendingAssets((current) => current.filter((asset) => asset.batchId !== task.pendingBatchId));
+        }
+      }));
+      const failures = results.flatMap((result) => result.status === "rejected" ? [errorText(result.reason)] : result.value.errors);
+      if (failures.length > 0) setError(failures.join(" · "));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const refreshAll = async () => {
@@ -263,7 +362,9 @@ export function MediaStudio({ locale, dropActive, referenceDrop, onReferenceDrop
 
   return (
     <main
+      ref={rootRef}
       className={`media-studio${dropActive ? " file-drag-active" : ""}`}
+      hidden={!active}
       onDragEnter={(event) => event.preventDefault()}
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => event.preventDefault()}
@@ -335,7 +436,7 @@ export function MediaStudio({ locale, dropActive, referenceDrop, onReferenceDrop
           <div className="media-options-grid">
             {kind !== "audio" && (
               <label><span>{tr("尺寸 / 比例", "Size / ratio")}</span><select value={size} onChange={(event) => setSize(event.target.value)}>
-                {(kind === "image" ? ["1024x1024", "1536x1024", "1024x1536", "16:9", "9:16"] : ["1280x720", "720x1280", "16:9", "9:16"]).map((value) => <option key={value}>{value}</option>)}
+                {(kind === "image" ? IMAGE_SIZE_OPTIONS : VIDEO_SIZE_OPTIONS).map((value) => <option key={value}>{value}</option>)}
               </select></label>
             )}
             {kind === "image" && <label><span>{tr("质量", "Quality")}</span><select value={quality} onChange={(event) => setQuality(event.target.value)}>{["auto", "high", "medium", "2K", "4K"].map((value) => <option key={value}>{value}</option>)}</select></label>}
@@ -355,8 +456,8 @@ export function MediaStudio({ locale, dropActive, referenceDrop, onReferenceDrop
           {kind === "image" && (
             <div className="media-reference-row">
               <div className="media-reference-heading">
-                <span>{tr("参考图", "References")}<small>{tr("可直接拖拽图片到创作空间", "Drop images anywhere in Media Studio")}</small></span>
-                <button onClick={() => void addReferences()}><ImagePlus size={14} />{tr("选择图片", "Choose images")}</button>
+                <span>{tr("参考图", "References")}<small>{pastingReferences ? tr("正在粘贴图片…", "Pasting images…") : tr("可拖拽、选择，或按 Ctrl+V 粘贴外部图片", "Drop, choose, or press Ctrl+V to paste images")}</small></span>
+                <button disabled={pastingReferences || references.length >= 8} onClick={() => void addReferences()}>{pastingReferences ? <LoaderCircle className="spin" size={14} /> : <ImagePlus size={14} />}{tr("选择图片", "Choose images")}</button>
               </div>
               <div>{references.map((attachment) => <AttachmentChip attachment={attachment} onRemove={() => void removeReference(attachment)} key={attachment.id} />)}</div>
             </div>
@@ -368,33 +469,39 @@ export function MediaStudio({ locale, dropActive, referenceDrop, onReferenceDrop
           {models.length === 0 && !loading ? (
             <button className="media-configure-button" onClick={onConfigureConnection}><Settings2 size={15} />{tr("配置支持生成能力的模型连接", "Configure a media-capable model connection")}</button>
           ) : (
-            <button className="media-generate-button" disabled={busy || loading || !selected || !prompts.some((item) => item.prompt.trim())} onClick={() => void generate()}>
-              {busy ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
-              {busy ? tr(`正在并行生成 ${prompts.filter((item) => item.prompt.trim()).length} 个任务`, `Generating ${prompts.filter((item) => item.prompt.trim()).length} tasks in parallel`) : tr("开始生成", "Generate")}
+            <button className="media-generate-button" disabled={busy || pastingReferences || loading || !selected || !prompts.some((item) => item.prompt.trim())} onClick={() => void generate()}>
+              {busy || pastingReferences ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
+              {pastingReferences ? tr("正在添加参考图", "Adding references") : busy ? tr(`正在并行生成 ${pendingAssets.length} 个结果`, `Generating ${pendingAssets.length} outputs in parallel`) : tr("开始生成", "Generate")}
             </button>
           )}
         </section>
 
         <section className="media-gallery-panel">
           <div className="media-gallery-heading">
-            <div><strong>{tr("创作历史", "Creation history")}</strong><span>{visibleAssets.length}</span></div>
+            <div>
+              <strong>{tr("创作历史", "Creation history")}</strong><span>{visibleAssets.length}</span>
+              {visiblePendingAssets.length > 0 && <em><LoaderCircle className="spin" size={12} />{tr(`${visiblePendingAssets.length} 个生成中`, `${visiblePendingAssets.length} generating`)}</em>}
+            </div>
             <small>{tr("结果保存在本机应用数据目录", "Outputs are stored in local app data")}</small>
           </div>
           {loading ? <div className="media-empty"><LoaderCircle className="spin" size={24} /><span>{tr("正在读取模型和历史", "Loading models and history")}</span></div>
-            : visibleAssets.length === 0 ? <div className="media-empty"><KindIcon kind={kind} /><strong>{tr("还没有作品", "No creations yet")}</strong><span>{tr("输入提示词后，结果会自动出现在这里", "Generated outputs will appear here automatically")}</span></div>
-              : <div className="media-gallery-grid">{visibleAssets.map((asset) => <MediaAssetCard asset={asset} locale={locale} onDelete={() => void removeAsset(asset)} key={asset.id} />)}</div>}
+            : displayedAssets.length === 0 ? <div className="media-empty"><KindIcon kind={kind} /><strong>{tr("还没有作品", "No creations yet")}</strong><span>{tr("输入提示词后，结果会自动出现在这里", "Generated outputs will appear here automatically")}</span></div>
+              : <div className="media-gallery-grid">{displayedAssets.map((asset) => <MediaAssetCard asset={asset} locale={locale} onDelete={asset.pendingOutput ? undefined : () => void removeAsset(asset)} onPreview={asset.kind === "image" && asset.status === "completed" ? () => setPreviewAsset(asset) : undefined} key={asset.id} />)}</div>}
         </section>
       </div>
+      {active && previewAsset && <MediaImagePreview asset={previewAsset} locale={locale} onClose={() => setPreviewAsset(null)} />}
     </main>
   );
 }
 
-export function MediaAssetCard({ asset, locale, onDelete }: { asset: MediaAsset; locale: string; onDelete?: () => void }) {
+export function MediaAssetCard({ asset, locale, onDelete, onPreview }: { asset: StudioMediaAsset; locale: string; onDelete?: () => void; onPreview?: () => void }) {
   const url = mediaAssetUrl(asset);
   const [exporting, setExporting] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
+  const [promptCopyStatus, setPromptCopyStatus] = useState<"idle" | "copied" | "error">("idle");
   const [exportFeedback, setExportFeedback] = useState<{ error: boolean; text: string } | null>(null);
   const canExport = asset.status === "completed" && Boolean(asset.filePath && asset.fileName);
+  const canPreview = asset.status === "completed" && asset.kind === "image" && Boolean(url && onPreview);
   const canExpandPrompt = asset.prompt.trim().length > 42;
 
   const exportAsset = async () => {
@@ -413,23 +520,44 @@ export function MediaAssetCard({ asset, locale, onDelete }: { asset: MediaAsset;
     }
   };
 
+  const copyPrompt = async () => {
+    try {
+      await copyText(asset.prompt);
+      setPromptCopyStatus("copied");
+    } catch {
+      setPromptCopyStatus("error");
+    }
+    window.setTimeout(() => setPromptCopyStatus("idle"), 1_500);
+  };
+
   return (
     <article className={`media-asset-card status-${asset.status} ${canExport || onDelete ? "has-actions" : ""}`}>
       <div className="media-preview">
-        {asset.status === "completed" && url && asset.kind === "image" && <img src={url} alt={asset.revisedPrompt || asset.prompt} />}
+        {asset.status === "completed" && url && asset.kind === "image" && (canPreview ? (
+          <button className="media-preview-trigger" type="button" onClick={onPreview} aria-label={tr("打开大图预览", "Open large image preview")}>
+            <img src={url} alt={asset.revisedPrompt || asset.prompt} />
+            <span><Maximize2 size={14} />{tr("查看大图", "View large")}</span>
+          </button>
+        ) : <img src={url} alt={asset.revisedPrompt || asset.prompt} />)}
         {asset.status === "completed" && url && asset.kind === "video" && <video src={url} controls preload="metadata" />}
         {asset.status === "completed" && url && asset.kind === "audio" && <div className="audio-preview"><AudioLines size={28} /><audio src={url} controls preload="metadata" /></div>}
-        {(asset.status === "queued" || asset.status === "in_progress") && <div className="pending-preview"><LoaderCircle className="spin" size={24} /><strong>{statusLabel(asset.status)}</strong><span>{asset.progress ?? 0}%</span></div>}
+        {(asset.status === "queued" || asset.status === "in_progress") && <div className="pending-preview"><LoaderCircle className="spin" size={24} /><strong>{statusLabel(asset.status)}</strong><span>{pendingAssetDetail(asset)}</span></div>}
         {asset.status === "failed" && <div className="failed-preview"><CircleAlert size={24} /><strong>{tr("生成失败", "Generation failed")}</strong></div>}
       </div>
       <div className="media-asset-content">
         <div className={`media-asset-prompt${promptExpanded ? " expanded" : ""}`}>
           <p title={asset.prompt}>{asset.prompt}</p>
-          {canExpandPrompt && (
-            <button type="button" onClick={() => setPromptExpanded((value) => !value)}>
-              {promptExpanded ? tr("收起提示词", "Collapse prompt") : tr("展开完整提示词", "Show full prompt")}
-            </button>
-          )}
+          {(canExpandPrompt || asset.kind === "image") && <div className="media-asset-prompt-actions">
+            {canExpandPrompt && (
+              <button type="button" onClick={() => setPromptExpanded((value) => !value)}>
+                {promptExpanded ? tr("收起提示词", "Collapse prompt") : tr("展开完整提示词", "Show full prompt")}
+              </button>
+            )}
+            {asset.kind === "image" && <button className={`media-copy-prompt status-${promptCopyStatus}`} type="button" onClick={() => void copyPrompt()} title={tr("复制完整提示词", "Copy full prompt")}>
+              {promptCopyStatus === "copied" ? <Check size={11} /> : <Copy size={11} />}
+              {promptCopyStatus === "copied" ? tr("已复制", "Copied") : promptCopyStatus === "error" ? tr("复制失败", "Copy failed") : tr("复制", "Copy")}
+            </button>}
+          </div>}
         </div>
         <div className="media-asset-meta"><span>{asset.model}</span><span>{asset.providerName}</span></div>
         <small><Clock3 size={11} />{new Intl.DateTimeFormat(locale, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(asset.createdAt)}</small>
@@ -441,6 +569,57 @@ export function MediaAssetCard({ asset, locale, onDelete }: { asset: MediaAsset;
         {onDelete && <button className="media-delete-asset" onClick={onDelete} title={tr("删除作品", "Delete creation")} aria-label={tr("删除作品", "Delete creation")}><Trash2 size={13} /></button>}
       </div>}
     </article>
+  );
+}
+
+function MediaImagePreview({ asset, locale, onClose }: { asset: MediaAsset; locale: string; onClose: () => void }) {
+  const url = mediaAssetUrl(asset);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  if (!url) return null;
+  const createdAt = new Intl.DateTimeFormat(locale, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(asset.createdAt);
+
+  return createPortal(
+    <div className="media-image-lightbox" role="dialog" aria-modal="true" aria-labelledby="media-image-preview-title" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <section className="media-image-lightbox-dialog">
+        <header>
+          <div>
+            <strong id="media-image-preview-title">{tr("图片预览", "Image preview")}</strong>
+            <p title={asset.prompt}>{asset.prompt}</p>
+          </div>
+          <button type="button" autoFocus onClick={onClose} aria-label={tr("关闭预览", "Close preview")} title={`${tr("关闭预览", "Close preview")} (Esc)`}><X size={19} /></button>
+        </header>
+        <div className="media-image-lightbox-canvas" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) onClose();
+        }}>
+          <img src={url} alt={asset.revisedPrompt || asset.prompt} />
+        </div>
+        <footer>
+          <div>
+            {asset.size && <span>{asset.size}</span>}
+            {asset.quality && <span>{asset.quality}</span>}
+            {asset.outputFormat && <span>{asset.outputFormat.toUpperCase()}</span>}
+          </div>
+          <small>{asset.model} · {asset.providerName} · {createdAt}</small>
+        </footer>
+      </section>
+    </div>,
+    document.body,
   );
 }
 
@@ -467,6 +646,14 @@ function statusLabel(status: MediaAsset["status"]) {
   return tr("失败", "Failed");
 }
 
+function pendingAssetDetail(asset: StudioMediaAsset) {
+  if (asset.pendingOutput) {
+    const { index, total } = asset.pendingOutput;
+    return total > 1 ? tr(`第 ${index} / ${total} 个结果`, `Output ${index} of ${total}`) : tr("请求已发送", "Request sent");
+  }
+  return asset.progress === undefined ? tr("请求已发送", "Request sent") : `${asset.progress}%`;
+}
+
 function promptPlaceholder(kind: MediaKind) {
   if (kind === "image") return tr("描述主体、构图、光线、材质、风格和需要避免的元素…", "Describe subject, composition, lighting, materials, style, and exclusions…");
   if (kind === "video") return tr("描述镜头、主体动作、环境变化、摄影机运动和节奏…", "Describe shot, subject motion, environment changes, camera movement, and timing…");
@@ -477,6 +664,18 @@ function KindIcon({ kind }: { kind: MediaKind }) {
   if (kind === "image") return <Image size={28} />;
   if (kind === "video") return <Video size={28} />;
   return <AudioLines size={28} />;
+}
+
+function clipboardImageFiles(clipboard: DataTransfer | null) {
+  if (!clipboard) return [];
+  const itemFiles = Array.from(clipboard.items)
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .flatMap((item) => {
+      const file = item.getAsFile();
+      return file ? [file] : [];
+    });
+  if (itemFiles.length > 0) return itemFiles;
+  return Array.from(clipboard.files).filter((file) => file.type.startsWith("image/"));
 }
 
 function errorText(error: unknown) {

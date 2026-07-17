@@ -367,7 +367,7 @@ fn attach_media_tools(request: &mut AgentTurnRequest) {
                     "count": { "type": "integer", "minimum": 1, "maximum": 8, "default": 1 },
                     "model": { "type": "string", "description": "Optional explicit image model; omit to use the newest recommended model" },
                     "profileId": { "type": "string", "description": "Optional configured connection ID" },
-                    "size": { "type": "string", "description": "Examples: 1024x1024, 1536x1024, 1024x1536, 16:9" },
+                    "size": { "type": "string", "description": "Examples: 1024x1024, 1536x1024, 1024x1536, 16:9, 9:16, 21:9, 9:21. The backend reinforces recognized sizes and aspect ratios in the effective image prompt." },
                     "quality": { "type": "string", "description": "Provider-specific quality such as auto, high, medium, 2K, or 4K" },
                     "outputFormat": { "type": "string", "enum": ["png", "jpeg", "webp"] },
                     "background": { "type": "string", "enum": ["auto", "transparent", "opaque"], "description": "Set transparent only when the user explicitly requests a transparent background; omit it otherwise. Model compatibility is enforced by the media backend." },
@@ -1001,6 +1001,37 @@ fn import_image_attachments(
     let mut imported = Vec::new();
     for path in source_paths {
         match attachment::import(&storage, std::path::Path::new(&path)) {
+            Ok(item) => imported.push(item),
+            Err(error) => {
+                for item in &imported {
+                    let _ = attachment::delete(&storage, &item.id);
+                }
+                return Err(error);
+            }
+        }
+    }
+    Ok(imported)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClipboardImagePayload {
+    name: String,
+    data_base64: String,
+}
+
+#[tauri::command]
+fn import_clipboard_images(
+    app: tauri::AppHandle,
+    images: Vec<ClipboardImagePayload>,
+) -> Result<Vec<ImageAttachment>, String> {
+    if images.is_empty() || images.len() > 8 {
+        return Err("Paste between 1 and 8 images at a time".to_owned());
+    }
+    let storage = attachment_storage(&app)?;
+    let mut imported = Vec::new();
+    for image in images {
+        match attachment::import_base64_image(&storage, &image.name, &image.data_base64) {
             Ok(item) => imported.push(item),
             Err(error) => {
                 for item in &imported {
@@ -2296,6 +2327,7 @@ pub fn run() {
             export_media_asset,
             delete_media_asset,
             import_image_attachments,
+            import_clipboard_images,
             delete_image_attachment,
             get_default_workspace,
             preview_attachment,

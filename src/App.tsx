@@ -32,6 +32,7 @@ import {
   ImagePlus,
   KeyRound,
   Languages,
+  LoaderCircle,
   MessageSquareText,
   MoreHorizontal,
   Network,
@@ -133,6 +134,7 @@ import {
 } from "./lib/storage";
 import { getAppLocale, setAppLocale, tr, type AppLocale } from "./lib/i18n";
 import { executeCallsWithParallelMedia } from "./lib/mediaConcurrency";
+import { copyText } from "./lib/clipboard";
 import type {
   AgentMessage,
   AgentMode,
@@ -266,6 +268,7 @@ function App() {
   const [sidebarQuery, setSidebarQuery] = useState("");
   const [mode, setMode] = useState<AgentMode>("agent");
   const [workspaceView, setWorkspaceView] = useState<"chat" | "media">("chat");
+  const [mediaPendingCount, setMediaPendingCount] = useState(0);
   const [defaultWorkspace, setDefaultWorkspace] = useState<string>();
   const [mediaReferenceDrop, setMediaReferenceDrop] = useState<{ id: string; paths: string[] } | null>(null);
   const [permissionLevel, setPermissionLevel] = useState<PermissionLevel>(loadPermissionLevel);
@@ -1317,8 +1320,8 @@ function App() {
           }}
         >
           <ImagePlus size={16} />
-          <span><strong>{tr("创作空间", "Media Studio")}</strong><small>{tr("图片 · 视频 · 语音", "Images · Video · Speech")}</small></span>
-          <Sparkles size={14} />
+          <span><strong>{tr("创作空间", "Media Studio")}</strong><small>{mediaPendingCount > 0 ? tr(`${mediaPendingCount} 个结果正在后台生成`, `${mediaPendingCount} outputs generating`) : tr("图片 · 视频 · 语音", "Images · Video · Speech")}</small></span>
+          {mediaPendingCount > 0 ? <span className="media-nav-progress" title={tr(`${mediaPendingCount} 个结果正在生成`, `${mediaPendingCount} outputs generating`)}><LoaderCircle className="spin" size={12} /><b>{mediaPendingCount}</b></span> : <Sparkles size={14} />}
         </button>
 
         {sidebarSearchOpen && (
@@ -1438,15 +1441,16 @@ function App() {
         </div>
       </aside>
 
-      {workspaceView === "media" ? (
-        <MediaStudio
-          locale={locale}
-          dropActive={fileDragActive}
-          referenceDrop={mediaReferenceDrop}
-          onReferenceDropHandled={(id) => setMediaReferenceDrop((current) => current?.id === id ? null : current)}
-          onConfigureConnection={() => setSettingsOpen(true)}
-        />
-      ) : (
+      <MediaStudio
+        active={workspaceView === "media"}
+        locale={locale}
+        dropActive={workspaceView === "media" && fileDragActive}
+        referenceDrop={mediaReferenceDrop}
+        onReferenceDropHandled={(id) => setMediaReferenceDrop((current) => current?.id === id ? null : current)}
+        onConfigureConnection={() => setSettingsOpen(true)}
+        onPendingCountChange={setMediaPendingCount}
+      />
+      {workspaceView === "chat" && (
       <main
         className={`workspace-shell${fileDragActive ? " file-drag-active" : ""}`}
         onDragEnter={(event) => {
@@ -3513,22 +3517,6 @@ function friendlyAgentError(reason: string) {
     "该模型或兼容接口不支持工具调用。请切换到“问答”模式，或选择支持 Function/Tool Calling 的模型。",
     "This model or compatible endpoint does not support tool calling. Switch to Ask mode or choose a model with Function/Tool Calling support.",
   )}`;
-}
-
-async function copyText(content: string) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(content);
-    return;
-  }
-  const textarea = document.createElement("textarea");
-  textarea.value = content;
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
-  document.body.appendChild(textarea);
-  textarea.select();
-  const copied = document.execCommand("copy");
-  textarea.remove();
-  if (!copied) throw new Error("Copy is unavailable");
 }
 
 function parseMediaToolAssets(content: string): MediaAsset[] | null {

@@ -583,49 +583,50 @@ async fn generate_images(
         selection.provider.profile.protocol,
         ProviderProtocol::GeminiGenerateContent
     );
-    let blobs = if native_gemini {
-        let calls = (0..request.count).map(|_| {
+    // Some OpenAI-compatible relays expose the Images API but reject `n > 1`
+    // when they translate it to an upstream image tool. Fan out single-output
+    // requests so "outputs each" works consistently for generations and edits.
+    let mut provider_request = request.clone();
+    provider_request.count = 1;
+    let calls = (0..request.count).map(|_| async {
+        if native_gemini {
             call_gemini_image(
                 client,
                 &selection.provider,
                 &selection.model,
-                request,
+                &provider_request,
                 references,
             )
-        });
-        let results = join_all(calls).await;
-        let mut blobs = Vec::new();
-        let mut failures = Vec::new();
-        for result in results {
-            match result {
-                Ok(mut items) => blobs.append(&mut items),
-                Err(error) => failures.push(error),
-            }
+            .await
+        } else {
+            call_openai_images(
+                client,
+                &selection.provider,
+                &selection.model,
+                &provider_request,
+                references,
+            )
+            .await
         }
-        if blobs.is_empty() {
-            return Err(failures.join("; "));
-        }
-        blobs
-    } else {
-        call_openai_images(
-            client,
-            &selection.provider,
-            &selection.model,
-            request,
-            references,
-        )
-        .await?
-    };
+    });
+    let results = join_all(calls).await;
 
     let mut assets = Vec::new();
     let mut errors = Vec::new();
-    for blob in blobs {
-        match save_completed_blob(
-            database, storage, selection, request, thread_id, &batch_id, blob,
-        )
-        .await
-        {
-            Ok(asset) => assets.push(asset),
+    for result in results {
+        match result {
+            Ok(blobs) => {
+                for blob in blobs {
+                    match save_completed_blob(
+                        database, storage, selection, request, thread_id, &batch_id, blob,
+                    )
+                    .await
+                    {
+                        Ok(asset) => assets.push(asset),
+                        Err(error) => errors.push(error),
+                    }
+                }
+            }
             Err(error) => errors.push(error),
         }
     }
@@ -650,11 +651,12 @@ async fn call_openai_images(
     request: &MediaGenerationRequest,
     references: &[ManagedImage],
 ) -> Result<Vec<GeneratedBlob>, String> {
+    let prompt = effective_image_prompt(request);
     let result = if references.is_empty() {
         let url = agent::endpoint(&provider.profile.base_url, "/v1/images/generations")?;
         let mut body = json!({
             "model": model,
-            "prompt": request.prompt.trim(),
+            "prompt": prompt,
             "n": request.count,
             "response_format": "b64_json"
         });
@@ -667,7 +669,7 @@ async fn call_openai_images(
         let url = agent::endpoint(&provider.profile.base_url, "/v1/images/edits")?;
         let mut form = Form::new()
             .text("model", model.to_owned())
-            .text("prompt", request.prompt.trim().to_owned())
+            .text("prompt", prompt)
             .text("n", request.count.to_string())
             .text("response_format", "b64_json".to_owned());
         for (name, value) in [
@@ -717,9 +719,10 @@ async fn call_openai_chat_image(
     request: &MediaGenerationRequest,
 ) -> Result<Value, String> {
     let url = agent::endpoint(&provider.profile.base_url, "/v1/chat/completions")?;
+    let prompt = effective_image_prompt(request);
     let body = json!({
         "model": model,
-        "messages": [{ "role": "user", "content": request.prompt.trim() }],
+        "messages": [{ "role": "user", "content": prompt }],
         "modalities": ["text", "image"],
         "n": request.count
     });
@@ -738,7 +741,7 @@ async fn call_gemini_image(
         &provider.profile.base_url,
         &format!("/v1beta/models/{model}:generateContent"),
     )?;
-    let mut parts = vec![json!({ "text": request.prompt.trim() })];
+    let mut parts = vec![json!({ "text": effective_image_prompt(request) })];
     parts.extend(references.iter().map(|image| {
         json!({
             "inlineData": {
@@ -1792,6 +1795,35 @@ fn is_gemini_video_model(model: &str) -> bool {
         .starts_with("veo")
 }
 
+fn effective_image_prompt(request: &MediaGenerationRequest) -> String {
+    let prompt = request.prompt.trim();
+    let Some(requirement) = request.size.as_deref().and_then(image_output_requirement) else {
+        return prompt.to_owned();
+    };
+    format!(
+        "{prompt}\n\n[Image output requirement: {requirement}. Treat this as a hard composition constraint. Fill the canvas edge to edge without letterboxing, blank margins, or decorative borders.]"
+    )
+}
+
+fn image_output_requirement(size: &str) -> Option<&'static str> {
+    match size.trim().to_ascii_lowercase().as_str() {
+        "1024x1024" | "1:1" | "square" => {
+            Some("render at 1024x1024 pixels with a 1:1 aspect ratio")
+        }
+        "1536x1024" | "3:2" | "landscape" => {
+            Some("render at 1536x1024 pixels with a 3:2 landscape aspect ratio")
+        }
+        "1024x1536" | "2:3" | "portrait" => {
+            Some("render at 1024x1536 pixels with a 2:3 portrait aspect ratio")
+        }
+        "16:9" => Some("use an exact 16:9 widescreen aspect ratio"),
+        "9:16" => Some("use an exact 9:16 portrait aspect ratio"),
+        "21:9" => Some("use an exact 21:9 ultrawide aspect ratio"),
+        "9:21" => Some("use an exact 9:21 ultra-tall portrait aspect ratio"),
+        _ => None,
+    }
+}
+
 fn gemini_aspect_ratio(size: &str) -> Option<&'static str> {
     match size.trim().to_ascii_lowercase().as_str() {
         "1024x1024" | "1:1" | "square" => Some("1:1"),
@@ -1799,6 +1831,8 @@ fn gemini_aspect_ratio(size: &str) -> Option<&'static str> {
         "1024x1536" | "2:3" | "portrait" => Some("2:3"),
         "16:9" => Some("16:9"),
         "9:16" => Some("9:16"),
+        "21:9" => Some("21:9"),
+        "9:21" => Some("9:21"),
         _ => None,
     }
 }
@@ -1860,10 +1894,20 @@ mod tests {
     }
 
     fn mock_sequence(responses: Vec<MockResponse>) -> (String, thread::JoinHandle<()>) {
+        mock_sequence_inspecting(responses, |_, _| {})
+    }
+
+    fn mock_sequence_inspecting<F>(
+        responses: Vec<MockResponse>,
+        inspect: F,
+    ) -> (String, thread::JoinHandle<()>)
+    where
+        F: Fn(usize, &[u8]) + Send + 'static,
+    {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let handle = thread::spawn(move || {
-            for response in responses {
+            for (index, response) in responses.into_iter().enumerate() {
                 let (mut stream, _) = listener.accept().unwrap();
                 stream
                     .set_read_timeout(Some(std::time::Duration::from_secs(5)))
@@ -1906,6 +1950,7 @@ mod tests {
                     first_line.starts_with(&format!("{} {} ", response.method, response.path)),
                     "unexpected request: {first_line}"
                 );
+                inspect(index, &request);
                 let reason = if response.status < 300 { "OK" } else { "Error" };
                 let headers = format!(
                     "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -2053,6 +2098,23 @@ mod tests {
     }
 
     #[test]
+    fn reinforces_image_dimensions_in_provider_prompts_and_native_config() {
+        let mut request = request(MediaKind::Image, 1);
+        request.prompt = "A cinematic city".to_owned();
+        request.size = Some("21:9".to_owned());
+        let prompt = effective_image_prompt(&request);
+        assert!(prompt.starts_with("A cinematic city"));
+        assert!(prompt.contains("exact 21:9 ultrawide aspect ratio"));
+        assert_eq!(gemini_aspect_ratio("21:9"), Some("21:9"));
+        assert_eq!(gemini_aspect_ratio("9:21"), Some("9:21"));
+
+        request.size = Some("1024x1536".to_owned());
+        assert!(effective_image_prompt(&request).contains("1024x1536 pixels"));
+        request.size = None;
+        assert_eq!(effective_image_prompt(&request), "A cinematic city");
+    }
+
+    #[test]
     fn wraps_pcm_as_browser_playable_wav() {
         let wav = pcm16_to_wav(&[0, 0, 1, 0], 24_000, 1);
         assert_eq!(&wav[0..4], b"RIFF");
@@ -2103,6 +2165,110 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(std::fs::read(exported).unwrap(), png);
+        server.join().unwrap();
+        drop(database);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn splits_multiple_openai_generations_into_single_output_requests() {
+        let first =
+            base64::engine::general_purpose::STANDARD.encode(b"\x89PNG\r\n\x1a\nmock-image-one");
+        let second =
+            base64::engine::general_purpose::STANDARD.encode(b"\x89PNG\r\n\x1a\nmock-image-two");
+        let responses = [first, second]
+            .into_iter()
+            .map(|encoded| MockResponse {
+                method: "POST",
+                path: "/v1/images/generations",
+                status: 200,
+                content_type: "application/json",
+                body: json!({ "data": [{ "b64_json": encoded }] })
+                    .to_string()
+                    .into_bytes(),
+            })
+            .collect();
+        let (base_url, server) = mock_sequence_inspecting(responses, |_, request| {
+            let request = String::from_utf8_lossy(request);
+            let body = request.split_once("\r\n\r\n").unwrap().1;
+            let value: Value = serde_json::from_str(body).unwrap();
+            assert_eq!(value.get("n").and_then(Value::as_u64), Some(1));
+        });
+        let mut provider = provider("primary", "gpt-image-2");
+        provider.profile.base_url = base_url;
+        let selection = MediaSelection {
+            provider,
+            model: "gpt-image-2".to_owned(),
+        };
+        let (root, database) = temp_storage("openai-image-multiple");
+        let result = generate_batch(
+            &Client::new(),
+            &root.join("media"),
+            &database,
+            &selection,
+            &request(MediaKind::Image, 2),
+            None,
+            &[],
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.assets.len(), 2);
+        assert!(result.errors.is_empty());
+        server.join().unwrap();
+        drop(database);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn splits_multiple_openai_edits_into_single_output_requests() {
+        let first =
+            base64::engine::general_purpose::STANDARD.encode(b"\x89PNG\r\n\x1a\nmock-edit-one");
+        let second =
+            base64::engine::general_purpose::STANDARD.encode(b"\x89PNG\r\n\x1a\nmock-edit-two");
+        let responses = [first, second]
+            .into_iter()
+            .map(|encoded| MockResponse {
+                method: "POST",
+                path: "/v1/images/edits",
+                status: 200,
+                content_type: "application/json",
+                body: json!({ "data": [{ "b64_json": encoded }] })
+                    .to_string()
+                    .into_bytes(),
+            })
+            .collect();
+        let (base_url, server) = mock_sequence_inspecting(responses, |_, request| {
+            let request = String::from_utf8_lossy(request);
+            assert!(request.contains("name=\"n\"\r\n\r\n1\r\n"));
+            assert!(!request.contains("name=\"n\"\r\n\r\n2\r\n"));
+        });
+        let mut provider = provider("primary", "gpt-image-2");
+        provider.profile.base_url = base_url;
+        let selection = MediaSelection {
+            provider,
+            model: "gpt-image-2".to_owned(),
+        };
+        let references = vec![ManagedImage {
+            file_name: "reference.png".to_owned(),
+            mime_type: "image/png".to_owned(),
+            bytes: b"\x89PNG\r\n\x1a\nmock-reference".to_vec(),
+        }];
+        let (root, database) = temp_storage("openai-edit-multiple");
+        let result = generate_batch(
+            &Client::new(),
+            &root.join("media"),
+            &database,
+            &selection,
+            &request(MediaKind::Image, 2),
+            None,
+            &references,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.assets.len(), 2);
+        assert!(result.errors.is_empty());
         server.join().unwrap();
         drop(database);
         let _ = std::fs::remove_dir_all(root);

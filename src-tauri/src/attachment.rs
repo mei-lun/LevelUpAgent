@@ -81,9 +81,49 @@ pub fn import(storage: &Path, source: &Path) -> Result<ImageAttachment, String> 
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("attachment")
+        .to_owned();
+    import_bytes(storage, &name, bytes)
+}
+
+pub fn import_base64_image(
+    storage: &Path,
+    name: &str,
+    encoded: &str,
+) -> Result<ImageAttachment, String> {
+    let encoded = encoded
+        .strip_prefix("data:")
+        .and_then(|value| value.split_once(',').map(|(_, data)| data))
+        .unwrap_or(encoded)
+        .trim();
+    let maximum_encoded_len = (MAX_ATTACHMENT_BYTES as usize).div_ceil(3) * 4;
+    if encoded.is_empty() || encoded.len() > maximum_encoded_len {
+        return Err("Pasted images must be between 1 byte and 20 MiB".to_owned());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|_| "The pasted image data is invalid".to_owned())?;
+    let attachment = import_bytes(storage, name, bytes)?;
+    if attachment.kind != AttachmentKind::Image {
+        let _ = delete(storage, &attachment.id);
+        return Err("Clipboard content must be a PNG, JPEG, WebP, or GIF image".to_owned());
+    }
+    Ok(attachment)
+}
+
+fn import_bytes(storage: &Path, name: &str, bytes: Vec<u8>) -> Result<ImageAttachment, String> {
+    if bytes.is_empty() || bytes.len() as u64 > MAX_ATTACHMENT_BYTES {
+        return Err("Attachments must be between 1 byte and 20 MiB".to_owned());
+    }
+    let name = name
         .chars()
+        .filter(|character| !character.is_control())
         .take(240)
         .collect::<String>();
+    let name = if name.trim().is_empty() {
+        "clipboard-image".to_owned()
+    } else {
+        name
+    };
     let (kind, mime_type) = classify_attachment(&name, &bytes)?;
 
     std::fs::create_dir_all(storage)
@@ -1082,6 +1122,20 @@ mod tests {
         resolve(&storage, &mut messages).unwrap();
         assert_eq!(messages[0].attachments[0].mime_type, "image/png");
         assert!(messages[0].attachments[0].data_base64.is_some());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn imports_base64_clipboard_images_into_managed_storage() {
+        let root = root("clipboard-image");
+        let storage = root.join("managed");
+        let encoded =
+            base64::engine::general_purpose::STANDARD.encode(b"\x89PNG\r\n\x1a\nclipboard-content");
+        let attachment = import_base64_image(&storage, "pasted.png", &encoded).unwrap();
+        assert_eq!(attachment.kind, AttachmentKind::Image);
+        assert_eq!(attachment.mime_type, "image/png");
+        assert!(storage.join(format!("{}.bin", attachment.id)).is_file());
+        assert!(import_base64_image(&storage, "not-an-image.txt", "aGVsbG8=").is_err());
         let _ = std::fs::remove_dir_all(root);
     }
 

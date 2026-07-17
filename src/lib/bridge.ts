@@ -68,6 +68,17 @@ export async function importAttachments(sourcePaths: string[]): Promise<ImageAtt
   return invoke<ImageAttachment[]>("import_image_attachments", { sourcePaths: sourcePaths.slice(0, 12) });
 }
 
+export async function importClipboardImages(files: File[]): Promise<ImageAttachment[]> {
+  const images = files.filter((file) => file.type.startsWith("image/")).slice(0, 8);
+  if (!isDesktop() || images.length === 0) return [];
+  const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, "");
+  const payloads = await Promise.all(images.map(async (file, index) => ({
+    name: file.name || `clipboard-${timestamp}-${index + 1}.${imageExtension(file.type)}`,
+    dataBase64: await readFileAsBase64(file),
+  })));
+  return invoke<ImageAttachment[]>("import_clipboard_images", { images: payloads });
+}
+
 export async function deleteImageAttachment(attachmentId: string): Promise<boolean> {
   if (!isDesktop()) return false;
   return invoke<boolean>("delete_image_attachment", { attachmentId });
@@ -132,6 +143,33 @@ export async function deleteMediaAsset(assetId: string): Promise<boolean> {
 export function mediaAssetUrl(asset: MediaAsset): string | undefined {
   if (!asset.filePath || !isDesktop()) return undefined;
   return convertFileSrc(asset.filePath);
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read the pasted image"));
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("Could not read the pasted image"));
+        return;
+      }
+      const separator = reader.result.indexOf(",");
+      if (separator < 0) {
+        reject(new Error("The pasted image data is invalid"));
+        return;
+      }
+      resolve(reader.result.slice(separator + 1));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function imageExtension(mimeType: string) {
+  if (mimeType === "image/jpeg") return "jpg";
+  if (mimeType === "image/webp") return "webp";
+  if (mimeType === "image/gif") return "gif";
+  return "png";
 }
 
 export async function saveApiKey(profileId: string, apiKey: string) {
