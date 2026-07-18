@@ -36,6 +36,7 @@ import type {
   ToolExecutionResponse,
   ThemeManifest,
   ThemePackage,
+  ResolvedLayout,
 } from "./types";
 
 export const isDesktop = () => "__TAURI_INTERNALS__" in window;
@@ -47,6 +48,10 @@ export async function listThemes(): Promise<ThemeManifest[]> {
 
 export async function loadTheme(themeId: string): Promise<ThemePackage> {
   return invoke<ThemePackage>("load_theme", { themeId });
+}
+
+export async function loadThemeLayout(themeId: string): Promise<ResolvedLayout> {
+  return invoke<ResolvedLayout>("load_theme_layout", { themeId });
 }
 
 export async function selectAndInstallTheme(): Promise<ThemeManifest | null> {

@@ -64,7 +64,9 @@ import {
 import { IconButton } from "./components/IconButton";
 import { AttachmentChip } from "./components/AttachmentChip";
 import { MediaAssetCard, MediaStudio } from "./components/MediaStudio";
+import { DeclarativeLayout, type LayoutActions, type LayoutData } from "./components/DeclarativeLayout";
 import packageMetadata from "../package.json";
+import defaultLayoutJson from "../layouts/default.layout.json";
 import {
   agentTurnStream,
   applyGitRollback,
@@ -115,6 +117,7 @@ import {
   upsertMcpServer,
   listThemes,
   loadTheme,
+  loadThemeLayout,
   selectAndInstallTheme,
   uninstallTheme,
 } from "./lib/bridge";
@@ -174,6 +177,8 @@ import type {
   SkillInfo,
   ToolCall,
   ThemeManifest,
+  LayoutDefinition,
+  ResolvedLayout,
 } from "./lib/types";
 import "./App.css";
 
@@ -193,6 +198,10 @@ const RISKY_COMMAND_PATTERNS = [
 const MAX_TOOL_ROUNDS = 12;
 const MAX_GOAL_ROUNDS = 48;
 const LEVELUP_WEBSITE = "https://levelup.mom/";
+const DEFAULT_LAYOUT: ResolvedLayout = {
+  source: "default",
+  definition: defaultLayoutJson as LayoutDefinition,
+};
 
 function commandNeedsAgentApproval(call: ToolCall) {
   const command = typeof call.arguments.command === "string" ? call.arguments.command.trim() : "";
@@ -291,7 +300,7 @@ function App() {
   const [themes, setThemes] = useState<ThemeManifest[]>([]);
   const [activeThemeId, setActiveThemeId] = useState(loadActiveThemeId);
   const [activeThemeCss, setActiveThemeCss] = useState("");
-  const [activeThemeLayout, setActiveThemeLayout] = useState<"standard" | "qq2007">("standard");
+  const [activeLayout, setActiveLayout] = useState<ResolvedLayout>(DEFAULT_LAYOUT);
   const [qq2007RightTab, setQq2007RightTab] = useState<"environment" | "friends">("friends");
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [threadMenuOpen, setThreadMenuOpen] = useState(false);
@@ -372,23 +381,28 @@ function App() {
         const installed = await listThemes();
         if (disposed) return;
         setThemes(installed);
-        if (activeThemeId === "default") return;
-        if (!installed.some((theme) => theme.id === activeThemeId)) {
+        const selectedId = activeThemeId !== "default" && installed.some((theme) => theme.id === activeThemeId)
+          ? activeThemeId
+          : "default";
+        if (selectedId !== activeThemeId) {
           saveActiveThemeId("default");
           setActiveThemeId("default");
-          return;
         }
-        const theme = await loadTheme(activeThemeId);
+        const [theme, resolvedLayout] = await Promise.all([
+          selectedId === "default" ? Promise.resolve(null) : loadTheme(selectedId),
+          loadThemeLayout(selectedId),
+        ]);
         if (!disposed) {
-          setActiveThemeCss(theme.css);
-          setActiveThemeLayout(theme.layout ?? "standard");
+          setActiveThemeCss(theme?.css ?? "");
+          setActiveLayout(resolvedLayout);
+          if (resolvedLayout.warning) setNotice(resolvedLayout.warning);
         }
       } catch (error) {
         if (!disposed) {
           saveActiveThemeId("default");
           setActiveThemeId("default");
           setActiveThemeCss("");
-          setActiveThemeLayout("standard");
+          setActiveLayout(DEFAULT_LAYOUT);
           setNotice(`${tr("主题加载失败", "Could not load theme")}: ${errorText(error)}`);
         }
       }
@@ -410,24 +424,26 @@ function App() {
 
   useEffect(() => {
     if (!isDesktop()) return;
-    void getCurrentWindow().setDecorations(activeThemeLayout !== "qq2007").catch((error) => {
+    void getCurrentWindow().setDecorations(activeLayout.definition.window?.decorations ?? true).catch((error) => {
       console.error("Could not update window decorations", error);
     });
-  }, [activeThemeLayout]);
+  }, [activeLayout.definition.window?.decorations]);
 
   const activateTheme = async (themeId: string) => {
     if (themeId === "default") {
+      const resolvedLayout = isDesktop() ? await loadThemeLayout("default") : DEFAULT_LAYOUT;
       saveActiveThemeId("default");
       setActiveThemeId("default");
       setActiveThemeCss("");
-      setActiveThemeLayout("standard");
+      setActiveLayout(resolvedLayout);
       return;
     }
-    const theme = await loadTheme(themeId);
+    const [theme, resolvedLayout] = await Promise.all([loadTheme(themeId), loadThemeLayout(themeId)]);
     saveActiveThemeId(theme.id);
     setActiveThemeId(theme.id);
     setActiveThemeCss(theme.css);
-    setActiveThemeLayout(theme.layout ?? "standard");
+    setActiveLayout(resolvedLayout);
+    if (resolvedLayout.warning) setNotice(resolvedLayout.warning);
   };
 
   const installSelectedTheme = async () => {
@@ -1359,30 +1375,9 @@ function App() {
         ? tr("无密钥兼容连接不提供余额查询", "Balance lookup is unavailable for a keyless compatible connection")
         : tr("请先配置当前连接的 API Key", "Configure an API key for this connection")
       : tr("点击刷新，余额每 60 秒自动更新", "Click to refresh; updates automatically every 60 seconds");
-  const qq2007Layout = activeThemeLayout === "qq2007";
   const qq2007Title = localizedThreadTitle(activeThread.title);
 
-  return (
-    <div className={`app-shell ${rightPanelOpen && workspaceView === "chat" ? "" : "details-collapsed"}${qq2007Layout ? " qq2007-layout" : ""}`}>
-      {qq2007Layout && (
-        <QQ2007TitleBar title={qq2007Title} />
-      )}
-      {qq2007Layout && (
-        <QQ2007Toolbar
-          workspaceView={workspaceView}
-          onNewThread={() => newThread()}
-          onMedia={() => setWorkspaceView("media")}
-          onExtensions={() => setMcpOpen(true)}
-          onWebsite={() => void openLevelUpWebsite()}
-          onReview={() => {
-            setWorkspaceView("chat");
-            setRightPanelOpen(true);
-            setQq2007RightTab("environment");
-          }}
-          onChat={() => setWorkspaceView("chat")}
-          onThemes={() => setThemesOpen(true)}
-        />
-      )}
+  const sidebarSlot = (
       <aside className="sidebar">
         <div className="sidebar-header">
           <button className="brand" type="button" title={tr("访问 LevelUpAPI 官网", "Visit LevelUpAPI")} onClick={() => void openLevelUpWebsite()}>
@@ -1562,8 +1557,10 @@ function App() {
           </button>
         </div>
       </aside>
+  );
 
-      <MediaStudio
+  const mediaStudioSlot = (
+    <MediaStudio
         active={workspaceView === "media"}
         locale={locale}
         dropActive={workspaceView === "media" && fileDragActive}
@@ -1571,8 +1568,10 @@ function App() {
         onReferenceDropHandled={(id) => setMediaReferenceDrop((current) => current?.id === id ? null : current)}
         onConfigureConnection={() => setSettingsOpen(true)}
         onPendingCountChange={setMediaPendingCount}
-      />
-      {workspaceView === "chat" && (
+    />
+  );
+
+  const workspaceSlot = workspaceView === "chat" ? (
       <main
         className={`workspace-shell${fileDragActive ? " file-drag-active" : ""}`}
         onDragEnter={(event) => {
@@ -1738,50 +1737,36 @@ function App() {
           onStop={stopAgent}
         />
       </main>
-      )}
+  ) : null;
 
-      {workspaceView === "chat" && rightPanelOpen && (
-        qq2007Layout ? (
-          <QQ2007RightPanel
-            activeTab={qq2007RightTab}
-            modelName={activeProfile.model || activeProfile.name}
-            onTabChange={setQq2007RightTab}
-          >
-            <Inspector
-              profile={activeProfile}
-              thread={activeThread}
-              mode={mode}
-              permissionLevel={permissionLevel}
-              keyConfigured={connectionReady}
-              gitStatus={gitStatus}
-              goal={goalState}
-              onWorkspace={chooseWorkspace}
-              onSettings={() => setSettingsOpen(true)}
-              onDiff={openGitDiff}
-              onGoalAction={controlGoal}
-            />
-          </QQ2007RightPanel>
-        ) : (
-          <Inspector
-            profile={activeProfile}
-            thread={activeThread}
-            mode={mode}
-            permissionLevel={permissionLevel}
-            keyConfigured={connectionReady}
-            gitStatus={gitStatus}
-            goal={goalState}
-            onWorkspace={chooseWorkspace}
-            onSettings={() => setSettingsOpen(true)}
-            onDiff={openGitDiff}
-            onGoalAction={controlGoal}
-          />
-        )
-      )}
+  const inspectorSlot = workspaceView === "chat" && rightPanelOpen ? (
+    <Inspector
+      profile={activeProfile}
+      thread={activeThread}
+      mode={mode}
+      permissionLevel={permissionLevel}
+      keyConfigured={connectionReady}
+      gitStatus={gitStatus}
+      goal={goalState}
+      onWorkspace={chooseWorkspace}
+      onSettings={() => setSettingsOpen(true)}
+      onDiff={openGitDiff}
+      onGoalAction={controlGoal}
+    />
+  ) : null;
 
-      {qq2007Layout && (
-        <QQ2007StatusBar permissionLevel={permissionLevel} running={running} />
-      )}
+  const qq2007RightPanelSlot = workspaceView === "chat" && rightPanelOpen ? (
+    <QQ2007RightPanel
+      activeTab={qq2007RightTab}
+      modelName={activeProfile.model || activeProfile.name}
+      onTabChange={setQq2007RightTab}
+    >
+      {inspectorSlot}
+    </QQ2007RightPanel>
+  ) : null;
 
+  const overlays = (
+    <>
       {settingsOpen && (
         <ConnectionDialog
           profiles={profiles}
@@ -1862,7 +1847,105 @@ function App() {
           {notice}<X size={14} />
         </button>
       )}
-    </div>
+    </>
+  );
+
+  const layoutData: LayoutData = {
+    app: { name: "LevelUpAgent", version: packageMetadata.version, locale },
+    view: { current: workspaceView, detailsOpen: rightPanelOpen },
+    thread: {
+      id: activeThread.id,
+      title: localizedThreadTitle(activeThread.title),
+      workspace: activeThread.workspace ?? "",
+      messageCount: activeThread.messages.filter((item) => !item.internal).length,
+      running,
+      pendingApproval: Boolean(pending),
+    },
+    profile: {
+      id: activeProfile.id,
+      name: activeProfile.name,
+      model: activeProfile.model,
+      connected: connectionReady,
+    },
+    agent: { mode, permission: permissionLevel },
+    balance: { label: balanceLabel, loading: balanceBusy, error: balanceError ?? "" },
+    workspace: { temporary: activeUsesDefaultWorkspace, path: activeThread.workspace ?? "" },
+    projects: displayedProjectGroups.map((project) => ({
+      id: project.key,
+      name: project.name,
+      workspace: project.workspace ?? "",
+      threadCount: project.threads.length,
+    })),
+    threads: threads.map((thread) => ({
+      id: thread.id,
+      title: localizedThreadTitle(thread.title),
+      workspace: thread.workspace ?? "",
+      active: thread.id === activeThread.id,
+      running: runningThreadIds.has(thread.id),
+      pendingApproval: Boolean(pendingApprovals[thread.id]),
+    })),
+    git: { branch: gitStatus?.branch ?? "", changedFiles: gitStatus?.changes.length ?? 0 },
+    goal: { status: goalState?.status ?? "none" },
+  };
+
+  const layoutActions: LayoutActions = {
+    "thread.new": (args) => newThread(typeof args.workspace === "string" ? args.workspace : undefined),
+    "thread.activate": (args) => {
+      if (typeof args.threadId === "string" && threads.some((thread) => thread.id === args.threadId)) {
+        activateThread(args.threadId);
+      }
+    },
+    "project.open": () => { void openProject(); },
+    "view.chat": () => setWorkspaceView("chat"),
+    "view.media": () => setWorkspaceView("media"),
+    "panel.toggle": () => setRightPanelOpen((value) => !value),
+    "dialog.settings": () => setSettingsOpen(true),
+    "dialog.themes": () => setThemesOpen(true),
+    "dialog.extensions": () => setMcpOpen(true),
+    "dialog.skills": () => setSkillsOpen(true),
+    "dialog.logs": () => setLogsOpen(true),
+    "app.website": () => { void openLevelUpWebsite(); },
+    "app.locale.toggle": toggleLocale,
+    "balance.refresh": () => { void refreshBalance(); },
+    "window.minimize": () => { if (isDesktop()) void getCurrentWindow().minimize(); },
+    "window.toggleMaximize": () => { if (isDesktop()) void getCurrentWindow().toggleMaximize(); },
+    "window.close": () => { if (isDesktop()) void getCurrentWindow().close(); },
+  };
+
+  return (
+    <DeclarativeLayout
+      definition={activeLayout.definition}
+      locale={locale}
+      data={layoutData}
+      actions={layoutActions}
+      shellClassName={rightPanelOpen && workspaceView === "chat" ? undefined : "details-collapsed"}
+      slots={{
+        sidebar: sidebarSlot,
+        workspace: workspaceSlot,
+        mediaStudio: mediaStudioSlot,
+        inspector: inspectorSlot,
+        qq2007Titlebar: <QQ2007TitleBar title={qq2007Title} />,
+        qq2007Toolbar: (
+          <QQ2007Toolbar
+            workspaceView={workspaceView}
+            onNewThread={() => newThread()}
+            onMedia={() => setWorkspaceView("media")}
+            onExtensions={() => setMcpOpen(true)}
+            onWebsite={() => void openLevelUpWebsite()}
+            onReview={() => {
+              setWorkspaceView("chat");
+              setRightPanelOpen(true);
+              setQq2007RightTab("environment");
+            }}
+            onChat={() => setWorkspaceView("chat")}
+            onThemes={() => setThemesOpen(true)}
+          />
+        ),
+        qq2007RightPanel: qq2007RightPanelSlot,
+        qq2007Statusbar: <QQ2007StatusBar permissionLevel={permissionLevel} running={running} />,
+      }}
+      overlays={overlays}
+    />
   );
 }
 
@@ -2770,7 +2853,7 @@ function ThemeDialog({
           {error && <div className="dialog-error">{error}</div>}
         </div>
         <div className="dialog-footer themes-footer">
-          <small>{tr("主题只能覆盖界面样式，无法访问 API Key、会话或本地文件。", "Themes only override interface styles and cannot access API keys, conversations, or local files.")}</small>
+          <small>{tr("主题可携带声明式布局并读取受控界面数据，但不能访问 API Key、消息正文或任意本地文件。", "Themes may include declarative layouts and controlled UI data, but cannot access API keys, message bodies, or arbitrary local files.")}</small>
           <button className="primary-button" disabled={busy || !isDesktop()} onClick={() => void act(onInstall)}><Plus size={15} /> {tr("安装主题包", "Install theme package")}</button>
         </div>
       </div>

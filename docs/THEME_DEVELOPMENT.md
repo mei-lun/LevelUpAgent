@@ -11,7 +11,7 @@ LevelUpAgent 的主题系统遵循以下原则：
 1. 主题可独立安装、切换、更新和卸载。
 2. 默认主题不依赖任何第三方主题文件。
 3. 第三方主题停用后不能残留 CSS、布局或窗口状态。
-4. 主题包不执行 JavaScript，只包含元数据、作用域 CSS 和内嵌资源。
+4. 主题包不执行 JavaScript；schemaVersion 2 可额外携带一个独立、声明式且经过校验的 `layout.json`。
 5. 优先修改主题项目；只有 CSS 无法表达缺失的语义结构时，才扩展 LevelUpAgent。
 6. 宿主扩展应是受控、可复用的布局能力，不能为某个主题散落硬编码补丁。
 
@@ -25,8 +25,8 @@ LevelUpAgent 的主题系统遵循以下原则：
 应用数据目录/themes/{id}.levelup-theme
         ↓ 激活
 <html data-levelup-theme="{id}"> + 专用 <style>
-        ↓ 可选布局契约
-standard 或宿主已支持的结构布局
+        ↓ 可选独立 layout.json
+自定义声明式布局；缺失时读取内置 default.layout.json
 ```
 
 相关宿主代码：
@@ -38,8 +38,11 @@ standard 或宿主已支持的结构布局
 | `src/lib/types.ts` | 前端 `ThemeManifest` 和 `ThemePackage` 类型 |
 | `src/lib/bridge.ts` | 文件选择器及 Tauri 主题命令桥接 |
 | `src/lib/storage.ts` | 当前主题 ID 的本地持久化 |
-| `src/App.tsx` | 初始化、激活、切回默认、卸载当前主题及可选结构布局 |
+| `src/App.tsx` | 初始化主题、提供受控布局数据/动作和真实功能插槽 |
 | `src/App.css` | 宿主提供的通用布局区域和默认样式 |
+| `src/components/DeclarativeLayout.tsx` | 根据已校验 JSON 渲染组件树、绑定数据和执行受控动作 |
+| `layouts/default.layout.json` | 所有无自定义布局主题使用的默认布局文件 |
+| `docs/LAYOUTS.md` | 布局 schema、节点、数据、动作和安装契约 |
 | `src-tauri/capabilities/default.json` | 结构主题确需原生窗口 API 时的最小权限 |
 
 ## 3. 先选择适配等级
@@ -49,14 +52,14 @@ standard 或宿主已支持的结构布局
 | 等级 | 适用情况 | 主题项目改动 | LevelUpAgent 改动 |
 | --- | --- | --- | --- |
 | A：视觉主题 | 颜色、字体、圆角、阴影、背景、现有控件外观 | manifest、CSS、素材、构建器、测试 | 无 |
-| B：现有结构主题 | 主题需要宿主已经支持的布局，如 `qq2007` | 同上，并声明已有 `layout` | 无 |
-| C：新结构主题 | 需要宿主 DOM 中不存在的标题栏、工具栏、面板或布局区域 | 完整主题包 | 增加一个受控布局契约及最小 UI 结构 |
+| B：声明式结构主题 | 需要重排区域、添加声明式组件或绑定宿主已公开数据/动作 | schemaVersion 2、CSS、独立 `layout.json` | 无 |
+| C：宿主能力扩展 | 需要布局运行时尚未公开的数据、动作或真实功能组件 | 完整主题包与布局 | 增加可复用的数据、动作或插槽契约 |
 
 必须先尝试 A，再检查 B。只有下面情况才进入 C：
 
 - CSS 无法创建可访问、可交互的新控件。
 - 主题需要真实窗口最小化、最大化、还原或关闭。
-- 主题需要新的语义面板，而不是单纯重新排列现有节点。
+- 主题需要 JSON 节点、现有插槽和受控动作无法表达的新宿主能力。
 - 使用伪元素实现会导致功能、键盘访问或响应式布局不完整。
 
 不能因为 CSS 编写麻烦就修改宿主。
@@ -82,13 +85,15 @@ standard 或宿主已支持的结构布局
 
 字段约束：
 
-- `schemaVersion` 当前只能是 `1`。
+- `schemaVersion` 可为 `1` 或 `2`。新自定义布局使用 `2`。
 - `id` 长度最多 80，只允许 ASCII 字母、数字、`-` 和 `_`；发布后不得更换。
 - `name` 最多 80 个可打印字符。
 - `version` 最多 32 个可打印字符，建议使用语义化版本。
 - `author` 最多 100 个可打印字符。
 - `description` 最多 500 个可打印字符。
-- `layout` 可省略，默认 `standard`；只能使用宿主已注册的值。
+- schemaVersion 1 的 `layout` 可省略，仅用于兼容 `standard` 与 `qq2007`。
+- schemaVersion 2 使用可选 `layoutFile`；它必须是同目录下的 `layout.json` 或以 `.layout.json` 结尾的普通文件名。
+- schemaVersion 2 未声明 `layoutFile` 时读取内置默认布局文件。
 - `homepage` 最多 300 个可打印字符，可省略。
 - `license` 最多 80 个可打印字符，可省略。
 - 包文件必须是普通文件，大小为 1 字节到 12 MiB。
@@ -253,17 +258,17 @@ npm test
 
 主题应在独立仓库完成构建并通过现有安装入口加载。
 
-### 7.2 新增结构布局
+### 7.2 新增声明式结构布局
 
-新布局必须有稳定、通用的布局 ID，例如 `compact-console`，不能使用临时项目名。按以下顺序修改：
+新布局必须有稳定、通用的布局 ID，例如 `compact-console`，不能使用临时项目名。通常不修改宿主，按以下顺序实施：
 
-1. 在 `src/lib/types.ts` 的 `ThemeManifest.layout` 联合类型中加入新值。
-2. 在 `src-tauri/src/theme.rs` 的布局白名单中加入同一个值，并增加接受/拒绝测试。
-3. 在 `src/App.tsx` 根据布局值渲染最少的新语义节点。
-4. 在 `src/App.css` 定义布局区域、尺寸和响应式降级，不写具体主题颜色。
-5. 在主题 CSS 中完成全部视觉样式，并保持主题 ID 作用域。
-6. 切回 `standard` 时必须移除所有新增节点并恢复默认状态。
-7. 更新 `docs/THEMES.md` 和本文档中的布局列表。
+1. 将主题 manifest 升级到 schemaVersion 2 并声明 `layoutFile`。
+2. 按 [LAYOUTS.md](./LAYOUTS.md) 使用容器、插槽、数据绑定、条件、列表、局部状态与受控动作。
+3. 将独立 `.layout.json` 与 `.levelup-theme` 放在同一目录交付。
+4. 在主题 CSS 中完成全部视觉样式，并保持主题 ID 作用域。
+5. 验证缺失布局时回退默认布局，卸载时删除布局并恢复默认状态。
+
+只有布局需要的数据、动作或真实功能插槽尚未注册时才修改宿主。扩展必须通用、最小，并同步 Rust 校验、TypeScript 类型、运行时注册表、文档和测试。
 
 宿主只负责“有什么区域和行为”，主题包负责“看起来是什么样”。
 
