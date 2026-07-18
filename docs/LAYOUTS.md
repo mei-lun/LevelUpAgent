@@ -6,11 +6,12 @@ The layout runtime is declarative. It supports component composition, visible ap
 
 ## Theme and layout files
 
-Keep both files in the same directory:
+Give every theme its own directory and keep both files inside it:
 
 ```text
-example.levelup-theme
-layout.json
+example-theme/
+├─ example.levelup-theme
+└─ layout.json
 ```
 
 The theme manifest names the companion file:
@@ -28,7 +29,7 @@ The theme manifest names the companion file:
 }
 ```
 
-Selecting `example.levelup-theme` installs both files atomically. `layoutFile` must be `layout.json` or a basename ending in `.layout.json`; absolute paths and directory traversal are rejected. Installed layouts are copied to managed application storage and removed with their theme.
+Selecting `example.levelup-theme` installs the directory contents as `themes/example/`, where the managed theme is stored as `theme.levelup-theme` beside `layout.json`. `layoutFile` must be `layout.json` or a basename ending in `.layout.json`; absolute paths and directory traversal are rejected. The complete directory is replaced on update and removed on uninstall. Flat files directly under `themes/` are not scanned.
 
 Schema version 1 themes remain compatible. `layout: "standard"` resolves to the default JSON layout, while `layout: "qq2007"` resolves to the bundled QQ2007 compatibility JSON layout.
 

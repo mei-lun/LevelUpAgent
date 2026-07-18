@@ -13,7 +13,7 @@ Build the requested interface with the declarative layout runtime. Keep structur
 2. Inspect the target theme manifest, CSS, assets, build script, and current layout before editing.
 3. Map the request to existing slots, data paths, primitive nodes, local state, conditions, repeats, and host actions.
 4. Create a schema version 2 theme manifest. Set `layoutFile` to `layout.json` or a local companion filename ending in `.layout.json`.
-5. Place that layout file beside the built `.levelup-theme` package. Keep both files independently distributable.
+5. Create a release directory named after the theme ID. Place the layout beside the built `.levelup-theme` package inside that directory; never emit companion files into a shared flat directory.
 6. Keep all theme CSS under `html[data-levelup-theme="THEME_ID"]`. Style custom layout classes there.
 7. Run `node scripts/validate-layout.mjs PATH_TO_LAYOUT PATH_TO_THEME_PACKAGE` from this skill directory.
 8. Build and test the theme, then verify install, activation, restart, default fallback, update, and uninstall.

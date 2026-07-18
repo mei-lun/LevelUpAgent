@@ -40,7 +40,7 @@ Schema version 2 themes replace the legacy `layout` identifier with an optional 
 }
 ```
 
-Place `layout.json` beside the `.levelup-theme` file. Selecting the theme installs both files. If `layoutFile` is omitted, LevelUpAgent reads its built-in [default layout](../layouts/default.layout.json). Layout files are validated by Rust and cannot contain executable JavaScript or arbitrary host calls.
+Place each theme in its own directory, with `layout.json` beside the `.levelup-theme` file. Selecting the theme installs the complete pair into `themes/{id}/`. If `layoutFile` is omitted, LevelUpAgent reads its built-in [default layout](../layouts/default.layout.json). Layout files are validated by Rust and cannot contain executable JavaScript or arbitrary host calls.
 
 Assets should be embedded as `data:` URLs. Remote CSS imports and remote `url(http...)` resources are rejected. The package is limited to 12 MiB and its CSS to 10 MiB.
 
@@ -48,7 +48,7 @@ Assets should be embedded as `data:` URLs. Remote CSS imports and remote `url(ht
 
 Open **Model connections → Themes** to manage packages.
 
-- Install validates the selected theme and any referenced companion layout, then copies them atomically to the app data `themes` directory.
+- Install validates the selected theme and any referenced companion layout, then atomically replaces the app data directory `themes/{id}/`.
 - Activate loads its CSS into a dedicated style element and persists the selected theme ID locally.
 - Switching to the built-in default removes all third-party CSS immediately.
 - Uninstall removes the copied package and layout. Removing the active package first switches back to the default theme and default layout.

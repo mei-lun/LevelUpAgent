@@ -2,7 +2,7 @@
 
 ## Package contract
 
-Use a schema version 2 theme package and keep the referenced layout beside it:
+Use a schema version 2 theme package. Give the theme its own release directory and keep the referenced layout beside it:
 
 ```json
 {
@@ -17,7 +17,7 @@ Use a schema version 2 theme package and keep the referenced layout beside it:
 }
 ```
 
-Installing the theme copies both files. Omitting `layoutFile` selects the built-in default layout. Legacy schema version 1 themes using `layout: "standard"` or `layout: "qq2007"` remain compatible.
+Installing the theme stores both files under `themes/{id}/`; updates replace that directory and uninstall removes it. Flat files directly under `themes/` are ignored. Omitting `layoutFile` selects the built-in default layout. Legacy schema version 1 package fields remain supported when installed through the directory-based installer.
 
 ## Layout envelope
 

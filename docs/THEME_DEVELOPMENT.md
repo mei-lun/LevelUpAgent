@@ -22,7 +22,8 @@ LevelUpAgent 的主题系统遵循以下原则：
         ↓ 构建
 单个 UTF-8 JSON .levelup-theme 文件
         ↓ 安装与 Rust 校验
-应用数据目录/themes/{id}.levelup-theme
+应用数据目录/themes/{id}/theme.levelup-theme
+                    └─ layout.json（可选）
         ↓ 激活
 <html data-levelup-theme="{id}"> + 专用 <style>
         ↓ 可选独立 layout.json
@@ -124,7 +125,9 @@ theme-project/
    ├─ build-theme.mjs
    ├─ theme-package.test.mjs
    └─ dist/
-      └─ example-theme.levelup-theme
+      └─ example-theme/
+         ├─ example-theme.levelup-theme
+         └─ layout.json
 ```
 
 主题源仓库不应混入旧平台注入器、无关运行时、私有截图、应用凭据或无法说明来源的素材。
@@ -264,7 +267,7 @@ npm test
 
 1. 将主题 manifest 升级到 schemaVersion 2 并声明 `layoutFile`。
 2. 按 [LAYOUTS.md](./LAYOUTS.md) 使用容器、插槽、数据绑定、条件、列表、局部状态与受控动作。
-3. 将独立 `.layout.json` 与 `.levelup-theme` 放在同一目录交付。
+3. 为每个主题创建独占发布目录，将 `.layout.json` 与 `.levelup-theme` 一起放入其中交付。
 4. 在主题 CSS 中完成全部视觉样式，并保持主题 ID 作用域。
 5. 验证缺失布局时回退默认布局，卸载时删除布局并恢复默认状态。
 

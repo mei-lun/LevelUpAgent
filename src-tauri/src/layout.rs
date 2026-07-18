@@ -638,18 +638,12 @@ fn required_string<'a>(
     )
 }
 
-pub fn installed_layout_path(storage: &Path, theme_id: &str) -> std::path::PathBuf {
-    storage.join(format!("{theme_id}.layout.json"))
-}
-
 pub fn resolve(
-    storage: &Path,
-    theme_id: &str,
-    custom_layout: bool,
+    custom_layout: Option<&Path>,
     legacy_layout: Option<&str>,
 ) -> Result<ResolvedLayout, String> {
-    if custom_layout {
-        match read_and_validate(&installed_layout_path(storage, theme_id)) {
+    if let Some(custom_layout) = custom_layout {
+        match read_and_validate(custom_layout) {
             Ok(definition) => {
                 return Ok(ResolvedLayout {
                     source: "theme".to_owned(),
@@ -728,8 +722,9 @@ mod tests {
     fn falls_back_when_an_installed_layout_is_corrupt() {
         let root = std::env::temp_dir().join(format!("levelup-layout-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(installed_layout_path(&root, "custom"), b"not json").unwrap();
-        let resolved = resolve(&root, "custom", true, None).unwrap();
+        let custom_layout = root.join("layout.json");
+        std::fs::write(&custom_layout, b"not json").unwrap();
+        let resolved = resolve(Some(&custom_layout), None).unwrap();
         assert_eq!(resolved.source, "default");
         assert!(resolved.warning.is_some());
         let _ = std::fs::remove_dir_all(root);

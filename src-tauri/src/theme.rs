@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 const MAX_THEME_PACKAGE_BYTES: u64 = 12 * 1024 * 1024;
 const MAX_THEME_CSS_BYTES: usize = 10 * 1024 * 1024;
 const THEME_EXTENSION: &str = "levelup-theme";
+const MANAGED_THEME_FILE: &str = "theme.levelup-theme";
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -140,9 +141,13 @@ fn validate_layout_file_name(value: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn package_path(storage: &Path, id: &str) -> Result<PathBuf, String> {
+fn theme_directory(storage: &Path, id: &str) -> Result<PathBuf, String> {
     validate_id(id)?;
-    Ok(storage.join(format!("{id}.{THEME_EXTENSION}")))
+    Ok(storage.join(id))
+}
+
+fn managed_package_path(storage: &Path, id: &str) -> Result<PathBuf, String> {
+    Ok(theme_directory(storage, id)?.join(MANAGED_THEME_FILE))
 }
 
 fn read_package(path: &Path) -> Result<ThemePackage, String> {
@@ -172,16 +177,7 @@ fn stage_file(path: &Path, bytes: &[u8], label: &str) -> Result<(), String> {
         .map_err(|error| format!("Could not stage {label}: {error}"))
 }
 
-fn existing_regular(path: &Path, label: &str) -> Result<bool, String> {
-    match std::fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => Ok(true),
-        Ok(_) => Err(format!("Installed {label} path is not a regular file")),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(error) => Err(format!("Could not inspect the existing {label}: {error}")),
-    }
-}
-
-fn restore_backup(backup: &Path, destination: &Path) {
+fn restore_directory_backup(backup: &Path, destination: &Path) {
     if backup.exists() {
         let _ = std::fs::rename(backup, destination);
     }
@@ -195,72 +191,59 @@ fn write_atomic(
     std::fs::create_dir_all(storage)
         .map_err(|error| format!("Could not create theme storage: {error}"))?;
     crate::filesystem::restrict_directory(storage)?;
-    let destination = package_path(storage, &package.manifest.id)?;
-    let layout_destination = crate::layout::installed_layout_path(storage, &package.manifest.id);
+    let destination = theme_directory(storage, &package.manifest.id)?;
     let transaction = uuid::Uuid::new_v4().simple().to_string();
     let temporary = storage.join(format!(".{}.{}.tmp", package.manifest.id, transaction));
-    let layout_temporary = storage.join(format!(
-        ".{}.{}.layout.tmp",
-        package.manifest.id, transaction
-    ));
+    std::fs::create_dir(&temporary)
+        .map_err(|error| format!("Could not stage theme directory: {error}"))?;
+    crate::filesystem::restrict_directory(&temporary)?;
     let bytes = serde_json::to_vec(package)
         .map_err(|error| format!("Could not serialize theme package: {error}"))?;
-    if let Err(error) = stage_file(&temporary, &bytes, "theme package") {
-        let _ = std::fs::remove_file(&temporary);
+    if let Err(error) = stage_file(&temporary.join(MANAGED_THEME_FILE), &bytes, "theme package") {
+        let _ = std::fs::remove_dir_all(&temporary);
         return Err(error);
     }
     if let Some(layout_bytes) = layout_bytes {
-        if let Err(error) = stage_file(&layout_temporary, layout_bytes, "layout file") {
-            let _ = std::fs::remove_file(&temporary);
-            let _ = std::fs::remove_file(&layout_temporary);
+        let layout_file = package
+            .manifest
+            .layout_file
+            .as_deref()
+            .ok_or_else(|| "Theme layout bytes require layoutFile".to_owned())?;
+        if let Err(error) = stage_file(&temporary.join(layout_file), layout_bytes, "layout file") {
+            let _ = std::fs::remove_dir_all(&temporary);
             return Err(error);
         }
     }
-    let backup = storage.join(format!(
-        ".{}.{}.theme.backup",
-        package.manifest.id, transaction
-    ));
-    let layout_backup = storage.join(format!(
-        ".{}.{}.layout.backup",
-        package.manifest.id, transaction
-    ));
-    let had_previous = existing_regular(&destination, "theme")?;
-    let had_layout = existing_regular(&layout_destination, "layout")?;
-    if had_previous && std::fs::rename(&destination, &backup).is_err() {
-        let _ = std::fs::remove_file(&temporary);
-        let _ = std::fs::remove_file(&layout_temporary);
-        return Err("Could not stage the existing theme for replacement".to_owned());
-    }
-    if had_layout {
-        if let Err(error) = std::fs::rename(&layout_destination, &layout_backup) {
-            restore_backup(&backup, &destination);
-            let _ = std::fs::remove_file(&temporary);
-            let _ = std::fs::remove_file(&layout_temporary);
+    let backup = storage.join(format!(".{}.{}.backup", package.manifest.id, transaction));
+    let had_previous = match std::fs::symlink_metadata(&destination) {
+        Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => true,
+        Ok(_) => {
+            let _ = std::fs::remove_dir_all(&temporary);
+            return Err("Installed theme directory is not a regular directory".to_owned());
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&temporary);
             return Err(format!(
-                "Could not stage the existing layout for replacement: {error}"
+                "Could not inspect existing theme directory: {error}"
             ));
+        }
+    };
+    if had_previous {
+        if let Err(error) = std::fs::rename(&destination, &backup) {
+            let _ = std::fs::remove_dir_all(&temporary);
+            return Err(format!("Could not stage existing theme directory: {error}"));
         }
     }
     if let Err(error) = std::fs::rename(&temporary, &destination) {
-        restore_backup(&backup, &destination);
-        restore_backup(&layout_backup, &layout_destination);
-        let _ = std::fs::remove_file(&temporary);
-        let _ = std::fs::remove_file(&layout_temporary);
-        return Err(format!("Could not install theme package: {error}"));
+        restore_directory_backup(&backup, &destination);
+        let _ = std::fs::remove_dir_all(&temporary);
+        return Err(format!("Could not install theme directory: {error}"));
     }
-    if layout_bytes.is_some() {
-        if let Err(error) = std::fs::rename(&layout_temporary, &layout_destination) {
-            let _ = std::fs::remove_file(&destination);
-            restore_backup(&backup, &destination);
-            restore_backup(&layout_backup, &layout_destination);
-            let _ = std::fs::remove_file(&layout_temporary);
-            return Err(format!("Could not install theme layout: {error}"));
-        }
-        crate::filesystem::restrict_file(&layout_destination)?;
+    if had_previous {
+        let _ = std::fs::remove_dir_all(backup);
     }
-    let _ = std::fs::remove_file(backup);
-    let _ = std::fs::remove_file(layout_backup);
-    crate::filesystem::restrict_file(&destination)
+    Ok(())
 }
 
 pub fn install(storage: &Path, source: &Path) -> Result<ThemeManifest, String> {
@@ -294,11 +277,16 @@ pub fn list(storage: &Path) -> Result<Vec<ThemeManifest>, String> {
     let mut themes = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().and_then(|value| value.to_str()) != Some(THEME_EXTENSION) {
+        let Ok(metadata) = std::fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if !metadata.is_dir() || metadata.file_type().is_symlink() {
             continue;
         }
-        if let Ok(package) = read_package(&path) {
-            themes.push(package.manifest);
+        if let Ok(package) = read_package(&path.join(MANAGED_THEME_FILE)) {
+            if path.file_name().and_then(|value| value.to_str()) == Some(&package.manifest.id) {
+                themes.push(package.manifest);
+            }
         }
     }
     themes.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
@@ -306,38 +294,38 @@ pub fn list(storage: &Path) -> Result<Vec<ThemeManifest>, String> {
 }
 
 pub fn load(storage: &Path, id: &str) -> Result<ThemePackage, String> {
-    read_package(&package_path(storage, id)?)
+    read_package(&managed_package_path(storage, id)?)
 }
 
 pub fn load_layout(storage: &Path, id: &str) -> Result<crate::layout::ResolvedLayout, String> {
     if id == "default" {
-        return crate::layout::resolve(storage, id, false, None);
+        return crate::layout::resolve(None, None);
     }
-    let package = load(storage, id)?;
-    crate::layout::resolve(
-        storage,
-        id,
-        package.manifest.layout_file.is_some(),
-        package.manifest.layout.as_deref(),
-    )
+    let package_path = managed_package_path(storage, id)?;
+    let package = read_package(&package_path)?;
+    let custom_layout = package
+        .manifest
+        .layout_file
+        .as_deref()
+        .map(|layout_file| {
+            theme_directory(storage, id).map(|directory| directory.join(layout_file))
+        })
+        .transpose()?;
+    crate::layout::resolve(custom_layout.as_deref(), package.manifest.layout.as_deref())
 }
 
 pub fn uninstall(storage: &Path, id: &str) -> Result<bool, String> {
-    let path = package_path(storage, id)?;
-    let removed = match std::fs::remove_file(path) {
-        Ok(()) => true,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
-        Err(error) => return Err(format!("Could not uninstall theme: {error}")),
-    };
-    match std::fs::remove_file(crate::layout::installed_layout_path(storage, id)) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(format!(
-                "Theme was removed but its layout could not be removed: {error}"
-            ));
+    let directory = theme_directory(storage, id)?;
+    let removed = match std::fs::symlink_metadata(&directory) {
+        Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
+            std::fs::remove_dir_all(&directory)
+                .map_err(|error| format!("Could not uninstall theme directory: {error}"))?;
+            true
         }
-    }
+        Ok(_) => return Err("Installed theme directory is not a regular directory".to_owned()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(format!("Could not inspect theme directory: {error}")),
+    };
     Ok(removed)
 }
 
@@ -371,6 +359,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(&source, serde_json::to_vec(&sample()).unwrap()).unwrap();
         assert_eq!(install(&storage, &source).unwrap().id, "qq-2007");
+        assert!(storage.join("qq-2007/theme.levelup-theme").is_file());
         assert_eq!(list(&storage).unwrap().len(), 1);
         assert!(load(&storage, "qq-2007").unwrap().css.contains("--accent"));
         let mut updated = sample();
@@ -413,9 +402,15 @@ mod tests {
         .unwrap();
         install(&storage, &source).unwrap();
         assert_eq!(load_layout(&storage, "qq-2007").unwrap().source, "theme");
-        assert!(crate::layout::installed_layout_path(&storage, "qq-2007").exists());
+        assert!(storage.join("qq-2007/layout.json").is_file());
+        package.manifest.schema_version = 1;
+        package.manifest.layout_file = None;
+        std::fs::write(&source, serde_json::to_vec(&package).unwrap()).unwrap();
+        install(&storage, &source).unwrap();
+        assert!(!storage.join("qq-2007/layout.json").exists());
+        assert_eq!(load_layout(&storage, "qq-2007").unwrap().source, "default");
         uninstall(&storage, "qq-2007").unwrap();
-        assert!(!crate::layout::installed_layout_path(&storage, "qq-2007").exists());
+        assert!(!storage.join("qq-2007").exists());
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -433,6 +428,21 @@ mod tests {
         assert!(install(&storage, &source).is_err());
         package.manifest.layout_file = Some("../escape.layout.json".to_owned());
         assert!(validate_package(&package).is_err());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn ignores_obsolete_flat_theme_files() {
+        let root =
+            std::env::temp_dir().join(format!("levelup-theme-flat-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("qq-2007.levelup-theme"),
+            serde_json::to_vec(&sample()).unwrap(),
+        )
+        .unwrap();
+        assert!(list(&root).unwrap().is_empty());
+        assert!(load(&root, "qq-2007").is_err());
         let _ = std::fs::remove_dir_all(root);
     }
 }
