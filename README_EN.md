@@ -95,6 +95,16 @@ Choose a project directory, create a conversation, and describe the outcome you 
 - Conversations can call `generate_images`, `generate_videos`, and `generate_speech`; consecutive generation calls run concurrently, preserve result order, and return to the model for one summary
 - OpenAI-compatible image, speech, and Sora flows plus native Gemini image, speech, and Veo flows, with persistent video jobs and automatic polling
 
+### Starlight Echoes
+
+- A separate transparent, always-on-top echo window with built-in Yui; names and avatars come directly from Codex-compatible pet packages
+- A frame-timed state machine plays all nine atlas actions; drag the character anywhere and resize each echo independently
+- Persistent per-echo XP and levels driven by real model input and output tokens
+- Separate game-style bubbles for concurrent conversations, approvals, and background media generation
+- Double-click opens an echo-specific temporary conversation that stays out of the normal conversation database; every echo has isolated, reviewable long-term memory
+- Import, switch, and remove multiple echoes, with automatic discovery from `${CODEX_HOME}/pets`
+- `hatch-pet` and `imagegen` ship inside the app and enable automatically; with Python and a model connection available, one click starts a Goal and imports the validated result
+
 ### Composable extensions
 
 - stdio and Streamable HTTP MCP clients
@@ -170,6 +180,7 @@ Validate all four protocol contracts against a local LevelUpAPI checkout:
 - [Architecture and security boundaries](docs/ARCHITECTURE.md)
 - [Security audit](docs/SECURITY_AUDIT.md)
 - [LevelUpAPI compatibility evidence](docs/LEVELUPAPI_COMPATIBILITY.md)
+- [Starlight Echo packages, XP, memory, and hatching](docs/DESKTOP_PETS.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Replacement audit](docs/REPLACEMENT_AUDIT.md)
 - [Signed releases and updates](docs/RELEASE.md)

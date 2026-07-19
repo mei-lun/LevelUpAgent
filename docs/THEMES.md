@@ -49,6 +49,8 @@ Assets should be embedded as `data:` URLs. Remote CSS imports and remote `url(ht
 Open **Model connections → Themes** to manage packages.
 
 - Install validates the selected theme and any referenced companion layout, then atomically replaces the app data directory `themes/{id}/`.
+- The manager also accepts a `.levelup-theme` dropped onto its import area or pasted with `Ctrl+V`; pasted JSON packages are validated by the same Rust installer. For schema version 2, paste the package and its companion `layout.json` together, or keep both files beside each other when dropping the package.
+- **Generate theme** prepares an Agent task in the current conversation, asks the model to write a validated package in the workspace, and imports/activates it automatically when the task finishes. The current model connection, workspace, and permission level are reused; missing prerequisites or approvals are surfaced to the user.
 - Activate loads its CSS into a dedicated style element and persists the selected theme ID locally.
 - Switching to the built-in default removes all third-party CSS immediately.
 - Uninstall removes the copied package and layout. Removing the active package first switches back to the default theme and default layout.

@@ -123,7 +123,7 @@ fn validate_package(package: &ThemePackage) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_layout_file_name(value: &str) -> Result<(), String> {
+pub(crate) fn validate_layout_file_name(value: &str) -> Result<(), String> {
     let path = Path::new(value);
     if value.is_empty()
         || value.len() > 120
@@ -162,7 +162,8 @@ fn read_package(path: &Path) -> Result<ThemePackage, String> {
     }
     let bytes =
         std::fs::read(path).map_err(|error| format!("Could not read theme package: {error}"))?;
-    let package: ThemePackage = serde_json::from_slice(&bytes)
+    let json_bytes = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&bytes);
+    let package: ThemePackage = serde_json::from_slice(json_bytes)
         .map_err(|error| format!("Theme package is not valid UTF-8 JSON: {error}"))?;
     validate_package(&package)?;
     Ok(package)
@@ -245,7 +246,11 @@ fn write_atomic(
 }
 
 pub fn install(storage: &Path, source: &Path) -> Result<ThemeManifest, String> {
-    if source.extension().and_then(|value| value.to_str()) != Some(THEME_EXTENSION) {
+    if !source
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case(THEME_EXTENSION))
+    {
         return Err("Select a .levelup-theme package".to_owned());
     }
     let package = read_package(source)?;
@@ -254,6 +259,11 @@ pub fn install(storage: &Path, source: &Path) -> Result<ThemeManifest, String> {
             .parent()
             .ok_or_else(|| "Theme package has no parent directory".to_owned())?
             .join(layout_file);
+        if !source_layout.exists() {
+            return Err(format!(
+                "Theme package is missing companion layout file `{layout_file}`"
+            ));
+        }
         let definition = crate::layout::read_and_validate(&source_layout)?;
         Some(
             serde_json::to_vec(&definition)
@@ -365,6 +375,11 @@ mod tests {
         std::fs::write(&source, serde_json::to_vec(&updated).unwrap()).unwrap();
         assert_eq!(install(&storage, &source).unwrap().version, "1.1.0");
         assert_eq!(load(&storage, "qq-2007").unwrap().manifest.version, "1.1.0");
+        let uppercase_source = root.join("source.LEVELUP-THEME");
+        let mut bom_package = vec![0xEF, 0xBB, 0xBF];
+        bom_package.extend(serde_json::to_vec(&updated).unwrap());
+        std::fs::write(&uppercase_source, bom_package).unwrap();
+        assert_eq!(install(&storage, &uppercase_source).unwrap().id, "qq-2007");
         assert!(uninstall(&storage, "qq-2007").unwrap());
         assert!(list(&storage).unwrap().is_empty());
         let _ = std::fs::remove_dir_all(root);
@@ -423,7 +438,8 @@ mod tests {
         package.manifest.schema_version = 2;
         package.manifest.layout_file = Some("missing.layout.json".to_owned());
         std::fs::write(&source, serde_json::to_vec(&package).unwrap()).unwrap();
-        assert!(install(&storage, &source).is_err());
+        let error = install(&storage, &source).unwrap_err();
+        assert!(error.contains("missing companion layout file"));
         package.manifest.layout_file = Some("../escape.layout.json".to_owned());
         assert!(validate_package(&package).is_err());
         let _ = std::fs::remove_dir_all(root);
