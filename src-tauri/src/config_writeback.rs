@@ -705,6 +705,7 @@ mod tests {
             allow_unauthenticated: false,
             priority: 10,
             failover_enabled: true,
+            default_harness: crate::models::HarnessSelection::default(),
         }
     }
 

@@ -149,6 +149,8 @@ import type {
   GitStatus,
   GoalState,
   GatewayDiagnostics,
+  HarnessFamily,
+  HarnessSelection,
   ImageAttachment,
   McpSecretValues,
   McpServerConfig,
@@ -606,6 +608,14 @@ function App() {
     }
   };
 
+  const updateActiveHarness = (patch: Partial<HarnessSelection>) => {
+    commitThread({
+      ...activeThread,
+      harness: { ...activeThread.harness, ...patch },
+      updatedAt: Date.now(),
+    });
+  };
+
   const setThreadRunning = (threadId: string, value: boolean) => {
     const next = new Set(runningThreadIdsRef.current);
     if (value) next.add(threadId);
@@ -815,6 +825,8 @@ function App() {
         runProfile,
         history,
         runMode,
+        thread.harness,
+        runPermission,
         thread.workspace,
         operationId,
         (delta) => {
@@ -865,7 +877,7 @@ function App() {
       const approvalRequired = result.toolCalls.filter((call) => toolNeedsApproval(call, runPermission));
 
       const automaticResults = await executeCallsWithParallelMedia(automatic, async (call) => (
-        executeTool(call, thread.workspace ?? "", thread.id, runProfile, runFallbackProfiles)
+        executeTool(call, thread.workspace ?? "", thread.id, runProfile, runFallbackProfiles, thread.harness, runPermission)
       ));
       for (const { call, result: toolResult } of automaticResults) {
         nextHistory = [
@@ -1078,7 +1090,7 @@ function App() {
       let history = approval.history;
       const resolved = approved
         ? await executeCallsWithParallelMedia(approval.calls, async (call) => (
-            executeTool(call, thread.workspace ?? "", thread.id, runProfile, runFallbackProfiles)
+            executeTool(call, thread.workspace ?? "", thread.id, runProfile, runFallbackProfiles, thread.harness, approval.permissionLevel)
           ))
         : approval.calls.map((call) => ({ call, result: { output: "User denied this tool call", isError: true } }));
       for (const { call, result } of resolved) {
@@ -1577,6 +1589,7 @@ function App() {
           attachments={draftAttachments}
           mode={mode}
           permissionLevel={permissionLevel}
+          harness={activeThread.harness}
           running={running}
           disabled={Boolean(pending)}
           modelMenuOpen={profileMenuOpen}
@@ -1612,6 +1625,7 @@ function App() {
           onRemoveAttachment={removeDraftImage}
           onModeChange={setMode}
           onPermissionChange={setPermissionLevel}
+          onHarnessChange={updateActiveHarness}
           onSend={send}
           onStop={stopAgent}
         />
@@ -1987,6 +2001,7 @@ function Composer({
   attachments,
   mode,
   permissionLevel,
+  harness,
   running,
   disabled,
   modelMenuOpen,
@@ -1995,6 +2010,7 @@ function Composer({
   onRemoveAttachment,
   onModeChange,
   onPermissionChange,
+  onHarnessChange,
   onSend,
   onStop,
 }: {
@@ -2002,6 +2018,7 @@ function Composer({
   attachments: ImageAttachment[];
   mode: AgentMode;
   permissionLevel: PermissionLevel;
+  harness: HarnessSelection;
   running: boolean;
   disabled: boolean;
   modelMenuOpen: boolean;
@@ -2010,6 +2027,7 @@ function Composer({
   onRemoveAttachment: (attachment: ImageAttachment) => void;
   onModeChange: (value: AgentMode) => void;
   onPermissionChange: (value: PermissionLevel) => void;
+  onHarnessChange: (patch: Partial<HarnessSelection>) => void;
   onSend: () => void;
   onStop: () => void;
 }) {
@@ -2105,6 +2123,45 @@ function Composer({
               </div>
             )}
           </div>
+          <div className="harness-picker" aria-label={tr("提示词规则", "Prompt harness")}>
+            <select
+              aria-label={tr("提示词规则", "Prompt harness")}
+              title={tr("当前会话使用的客户端规则", "Client rules used by this conversation")}
+              value={harness.family}
+              disabled={disabled || running}
+              onChange={(event) => onHarnessChange({ family: event.target.value as HarnessFamily })}
+            >
+              <option value="auto">{tr("规则：自动", "Rules: Auto")}</option>
+              <option value="level_up_generic">LevelUp Generic</option>
+              <option value="codex">Codex</option>
+              <option value="claude_code">Claude Code</option>
+              <option value="grok_build">Grok Build</option>
+            </select>
+            {harness.family === "claude_code" && (
+              <select
+                aria-label={tr("Claude Code 规则密度", "Claude Code rule density")}
+                title={tr("Claude Code 规则密度", "Claude Code rule density")}
+                value={harness.density}
+                disabled={disabled || running}
+                onChange={(event) => onHarnessChange({ density: event.target.value as HarnessSelection["density"] })}
+              >
+                <option value="auto">{tr("密度：自动", "Density: Auto")}</option>
+                <option value="lean">Lean</option>
+                <option value="full">Full</option>
+              </select>
+            )}
+            <select
+              aria-label={tr("任务编译器", "Task compiler")}
+              title={tr("是否调用提示词优化模型", "Whether to call the prompt optimization model")}
+              value={harness.compilerMode}
+              disabled={disabled || running}
+              onChange={(event) => onHarnessChange({ compilerMode: event.target.value as HarnessSelection["compilerMode"] })}
+            >
+              <option value="off">{tr("优化：关闭", "Optimize: Off")}</option>
+              <option value="auto">{tr("优化：自动", "Optimize: Auto")}</option>
+              <option value="always">{tr("优化：总是", "Optimize: Always")}</option>
+            </select>
+          </div>
           <span className="composer-spacer" />
           {modelControl}
           <IconButton label={running ? tr("停止", "Stop") : tr("发送", "Send")} className="send-button" disabled={disabled || (!running && !draft.trim() && attachments.length === 0)} onClick={running ? onStop : onSend}>
@@ -2188,6 +2245,8 @@ function Inspector({
           <span>{profile.model}</span><ChevronDown size={14} />
         </button>
         <div className="detail-row"><span>{tr("协议", "Protocol")}</span><small>{protocolLabel(profile.protocol)}</small></div>
+        <div className="detail-row"><span>{tr("提示词规则", "Prompt harness")}</span><small>{harnessLabel(thread.harness, profile)} · 1.0.0</small></div>
+        <div className="detail-row"><span>{tr("规则来源", "Rule source")}</span><small>{harnessSourceLabel(thread.harness, profile)}</small></div>
         <div className="detail-row"><span>{tr("状态", "Status")}</span><small className={keyConfigured ? "positive" : "negative"}>{keyConfigured ? tr("可用", "Available") : tr("未配置", "Not configured")}</small></div>
         <button className="detail-row clickable levelup-detail-link" type="button" title={LEVELUP_WEBSITE} onClick={() => void openLevelUpWebsite()}>
           <span>LevelUpAPI</span><small>levelup.mom</small><ExternalLink size={12} />
@@ -2444,6 +2503,7 @@ function ConnectionDialog({
       allowUnauthenticated: false,
       priority: Math.max(10, ...profiles.map((item) => item.priority + 10)),
       failoverEnabled: true,
+      defaultHarness: { family: "auto", density: "auto", compilerMode: "auto" },
     });
     setApiKey("");
     setModels([]);
@@ -2463,6 +2523,13 @@ function ConnectionDialog({
     setDiagnostics(null);
     setError(null);
     setLocalKeyConfigured(false);
+  };
+
+  const updateDefaultHarness = (patch: Partial<HarnessSelection>) => {
+    setDraftProfile((current) => ({
+      ...current,
+      defaultHarness: { ...current.defaultHarness, ...patch },
+    }));
   };
 
   const runDiagnostics = async () => {
@@ -2495,7 +2562,9 @@ function ConnectionDialog({
     try {
       const result = await fetchModels(draftProfile, apiKey);
       setModels(result);
-      if (result.length > 0 && !result.some((item) => item.id === draftProfile.model)) {
+      // Keep a manually entered model ID even when the provider's discovery
+      // endpoint omits it. Discovery is only a convenience list, not an allowlist.
+      if (result.length > 0 && !draftProfile.model.trim()) {
         update("model", result[0].id);
       }
     } catch (reason) {
@@ -2701,6 +2770,40 @@ function ConnectionDialog({
               <RefreshCw size={14} className={busy ? "spin" : ""} />
               {models.length > 0 ? `${models.length} ${tr("个模型", "models")}` : tr("检测", "Check")}
             </button>
+          </div>
+          <div className="harness-default-field wide">
+            <span>
+              <strong>{tr("默认提示词规则", "Default prompt harness")}</strong>
+              <small>{tr("会话选择“自动”时使用；可用任意兼容模型执行所选客户端规则。", "Used when a conversation is set to Auto; any compatible model can run the selected client rules.")}</small>
+            </span>
+            <div>
+              <label>
+                <span>{tr("规则", "Rules")}</span>
+                <select value={draftProfile.defaultHarness.family} onChange={(event) => updateDefaultHarness({ family: event.target.value as HarnessFamily })}>
+                  <option value="auto">{tr("按模型自动", "Auto by model")}</option>
+                  <option value="level_up_generic">LevelUp Generic</option>
+                  <option value="codex">Codex</option>
+                  <option value="claude_code">Claude Code</option>
+                  <option value="grok_build">Grok Build</option>
+                </select>
+              </label>
+              <label>
+                <span>{tr("密度", "Density")}</span>
+                <select value={draftProfile.defaultHarness.density} onChange={(event) => updateDefaultHarness({ density: event.target.value as HarnessSelection["density"] })}>
+                  <option value="auto">Auto</option>
+                  <option value="lean">Lean</option>
+                  <option value="full">Full</option>
+                </select>
+              </label>
+              <label>
+                <span>{tr("提示词优化", "Prompt optimization")}</span>
+                <select value={draftProfile.defaultHarness.compilerMode} onChange={(event) => updateDefaultHarness({ compilerMode: event.target.value as HarnessSelection["compilerMode"] })}>
+                  <option value="off">{tr("关闭", "Off")}</option>
+                  <option value="auto">Auto</option>
+                  <option value="always">{tr("总是", "Always")}</option>
+                </select>
+              </label>
+            </div>
           </div>
           <label className="failover-toggle wide">
             <input type="checkbox" checked={draftProfile.failoverEnabled} onChange={(event) => update("failoverEnabled", event.target.checked)} />
@@ -3657,6 +3760,34 @@ function protocolLabel(protocol: ProviderProtocol) {
   if (protocol === "openai_chat") return "Chat Completions";
   if (protocol === "anthropic_messages") return "Messages";
   return "GenerateContent";
+}
+
+function harnessLabel(threadHarness: HarnessSelection, profile: ProviderProfile) {
+  const selection = threadHarness.family !== "auto"
+    ? threadHarness
+    : profile.defaultHarness.family !== "auto"
+      ? profile.defaultHarness
+      : threadHarness;
+  const family = selection.family;
+  if (family === "auto") return tr("自动推荐", "Auto recommendation");
+  const familyName = family === "level_up_generic"
+    ? "LevelUp Generic"
+    : family === "claude_code"
+      ? "Claude Code"
+      : family === "grok_build"
+        ? "Grok Build"
+        : "Codex";
+  if (family !== "claude_code") return familyName;
+  const density = selection.density === "auto"
+    ? "Auto"
+    : selection.density === "lean" ? "Lean" : "Full";
+  return `${familyName} ${density}`;
+}
+
+function harnessSourceLabel(threadHarness: HarnessSelection, profile: ProviderProfile) {
+  if (threadHarness.family !== "auto") return tr("会话显式选择", "Thread override");
+  if (profile.defaultHarness.family !== "auto") return tr("连接默认", "Provider default");
+  return tr("按模型自动推荐", "Model recommendation");
 }
 
 function providerEndpointPreview(profile: ProviderProfile) {

@@ -1,0 +1,6 @@
+{
+  "id": "02-query-builder",
+  "title": "Deterministic query builder",
+  "publicTest": ["node", "--test"],
+  "dirtyOverlay": null
+}

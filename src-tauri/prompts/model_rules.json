@@ -1,0 +1,48 @@
+[
+  {
+    "id": "codex_family",
+    "patterns": [
+      "codex",
+      "gpt-5.5",
+      "gpt5.5",
+      "gpt-5.6",
+      "gpt5.6",
+      "5.6-sol",
+      "5.6terra",
+      "5.6-terra",
+      "5.6luna",
+      "5.6-luna"
+    ],
+    "family": "codex",
+    "density": "full",
+    "prompt_profile": "codex_5_6_sol"
+  },
+  {
+    "id": "claude_code_family",
+    "patterns": ["claude", "fable", "opus", "sonnet", "haiku"],
+    "family": "claude_code",
+    "density": "lean",
+    "prompt_profile": "claude_code_fable_5"
+  },
+  {
+    "id": "grok_family",
+    "patterns": ["grok"],
+    "family": "grok_build",
+    "density": "full",
+    "prompt_profile": "grok_build"
+  },
+  {
+    "id": "glm_family",
+    "patterns": ["glm"],
+    "family": "level_up_generic",
+    "density": "full",
+    "prompt_profile": "glm_5_2"
+  },
+  {
+    "id": "deepseek_family",
+    "patterns": ["deepseek"],
+    "family": "level_up_generic",
+    "density": "full",
+    "prompt_profile": "deepseek_v4"
+  }
+]

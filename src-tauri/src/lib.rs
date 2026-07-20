@@ -4,11 +4,13 @@ mod config_writeback;
 mod database;
 mod filesystem;
 mod git;
+mod harness;
 mod mcp;
 mod media;
 mod migration;
 mod models;
 mod process;
+mod prompt_compat;
 mod skill;
 mod subagent;
 mod tools;
@@ -1377,6 +1379,8 @@ where
                 "This is an isolated child run. Never attempt shell commands, delegation, Goal updates, MCP calls, or access outside the selected worktree. Main-worktree application requires a separate approval."
                     .to_owned(),
             ),
+            harness: request.harness.clone(),
+            permission_level: request.permission_level,
         };
         let response = run_agent_turn_with_failover(client, database, turn, |profile_id| {
             key_loader(profile_id)
@@ -1413,6 +1417,8 @@ where
                     thread_id: Some(child_thread_id.clone()),
                     profile: None,
                     fallback_profiles: Vec::new(),
+                    harness: request.harness.clone(),
+                    permission_level: request.permission_level,
                 })
                 .await
             } else {
@@ -2290,6 +2296,16 @@ pub fn run() {
         .manage(mcp::McpManager::default())
         .manage(subagent::SubagentManager::default())
         .setup(|app| {
+            if option_env!("LEVELUP_EVAL_BUILD").is_some() {
+                let title = if agent::EVAL_LEGACY_PROMPT {
+                    "LevelUpAgent Eval - LEGACY"
+                } else {
+                    "LevelUpAgent Eval - CODEX"
+                };
+                if let Some(window) = app.get_webview_window("main") {
+                    window.set_title(title)?;
+                }
+            }
             ensure_default_workspace(app.handle())
                 .map_err(|error| -> Box<dyn std::error::Error> { error.into() })?;
             let app_data = app.path().app_data_dir()?;
@@ -2390,6 +2406,7 @@ mod tests {
             allow_unauthenticated: false,
             priority,
             failover_enabled,
+            default_harness: models::HarnessSelection::default(),
         }
     }
 
@@ -2411,6 +2428,8 @@ mod tests {
                 profile("primary", 0, true),
             ],
             custom_instructions: None,
+            harness: models::HarnessSelection::default(),
+            permission_level: models::PermissionLevel::Full,
         };
         let ids = provider_candidates(&request)
             .into_iter()
@@ -2432,6 +2451,8 @@ mod tests {
             goal: None,
             fallback_profiles: Vec::new(),
             custom_instructions: None,
+            harness: models::HarnessSelection::default(),
+            permission_level: models::PermissionLevel::Full,
         };
         attach_media_tools(&mut request);
         assert!(
@@ -2593,6 +2614,8 @@ mod tests {
             goal: None,
             fallback_profiles: vec![fallback],
             custom_instructions: None,
+            harness: models::HarnessSelection::default(),
+            permission_level: models::PermissionLevel::Full,
         };
         let result = run_agent_turn_with_failover(&Client::new(), &database, request, |_| {
             Ok("test-key".to_owned())
@@ -2652,6 +2675,8 @@ mod tests {
             goal: None,
             fallback_profiles: Vec::new(),
             custom_instructions: None,
+            harness: models::HarnessSelection::default(),
+            permission_level: models::PermissionLevel::Full,
         };
         let result = run_agent_turn_with_failover(&Client::new(), &database, request, |_| {
             Err("No API key is stored".to_owned())
@@ -2813,6 +2838,8 @@ mod tests {
             thread_id: Some("parent-thread".to_owned()),
             profile: Some(child_profile),
             fallback_profiles: Vec::new(),
+            harness: models::HarnessSelection::default(),
+            permission_level: models::PermissionLevel::Full,
         };
         let summary = run_isolated_subagent(
             &Client::new(),

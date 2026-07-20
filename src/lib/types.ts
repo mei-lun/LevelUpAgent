@@ -4,6 +4,22 @@ export type ProviderProtocol =
   | "anthropic_messages"
   | "gemini_generate_content";
 
+export type HarnessFamily =
+  | "auto"
+  | "level_up_generic"
+  | "codex"
+  | "claude_code"
+  | "grok_build";
+
+export type PromptDensity = "auto" | "lean" | "full";
+export type TaskCompilerMode = "off" | "auto" | "always";
+
+export interface HarnessSelection {
+  family: HarnessFamily;
+  density: PromptDensity;
+  compilerMode: TaskCompilerMode;
+}
+
 export interface ProviderProfile {
   id: string;
   name: string;
@@ -13,6 +29,7 @@ export interface ProviderProfile {
   allowUnauthenticated: boolean;
   priority: number;
   failoverEnabled: boolean;
+  defaultHarness: HarnessSelection;
 }
 
 export interface ProviderSettings {
@@ -310,6 +327,7 @@ export interface AgentThread {
   updatedAt: number;
   inputTokens: number;
   outputTokens: number;
+  harness: HarnessSelection;
 }
 
 export interface PendingApproval {

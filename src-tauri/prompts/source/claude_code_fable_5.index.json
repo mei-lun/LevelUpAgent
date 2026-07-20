@@ -1,0 +1,80 @@
+{
+  "version": 2,
+  "source": "claude_code_fable_5.md",
+  "defaultSections": [
+    "identity",
+    "harness",
+    "communication_core",
+    "communication_safety",
+    "workflow",
+    "tool_policy",
+    "completion"
+  ],
+  "fullSections": [
+    "identity",
+    "harness",
+    "communication_core",
+    "communication_style",
+    "communication_safety",
+    "context_management",
+    "workflow",
+    "tool_policy",
+    "completion"
+  ],
+  "sections": [
+    {
+      "id": "identity",
+      "category": "core",
+      "startLine": 1,
+      "endLine": 4
+    },
+    {
+      "id": "harness",
+      "category": "core",
+      "startLine": 5,
+      "endLine": 11
+    },
+    {
+      "id": "communication_core",
+      "category": "behavior",
+      "startLine": 12,
+      "endLine": 18
+    },
+    {
+      "id": "communication_style",
+      "category": "behavior",
+      "startLine": 19,
+      "endLine": 24
+    },
+    {
+      "id": "communication_safety",
+      "category": "safety",
+      "startLine": 25,
+      "endLine": 31
+    },
+    {
+      "id": "context_management",
+      "category": "dynamic",
+      "startLine": 32,
+      "endLine": 37
+    },
+    {
+      "id": "workflow",
+      "category": "behavior",
+      "startLine": 38,
+      "endLine": 46
+    },
+    {
+      "id": "tool_policy",
+      "category": "capability",
+      "startLine": 47,
+      "endLine": 53
+    },
+    {
+      "id": "completion",
+      "category": "behavior",
+      "startLine": 54,
+      "endLine": 58
+    }
+  ]
+}

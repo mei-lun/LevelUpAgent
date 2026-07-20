@@ -1,4 +1,4 @@
-import type { AgentThread, PermissionLevel, ProviderProfile } from "./types";
+import type { AgentThread, HarnessSelection, PermissionLevel, ProviderProfile } from "./types";
 import { tr } from "./i18n";
 
 const PROFILE_KEY = "levelup-agent.profiles.v1";
@@ -18,7 +18,20 @@ export const defaultProfile: ProviderProfile = {
   allowUnauthenticated: false,
   priority: 10,
   failoverEnabled: true,
+  defaultHarness: defaultHarnessSelection(),
 };
+
+export function defaultHarnessSelection(): HarnessSelection {
+  return { family: "auto", density: "auto", compilerMode: "auto" };
+}
+
+export function normalizeHarnessSelection(value?: Partial<HarnessSelection>): HarnessSelection {
+  return {
+    family: value?.family ?? "auto",
+    density: value?.density ?? "auto",
+    compilerMode: value?.compilerMode ?? "auto",
+  };
+}
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -37,6 +50,7 @@ export function loadProfiles(): ProviderProfile[] {
     allowUnauthenticated: profile.allowUnauthenticated ?? false,
     priority: Number.isFinite(profile.priority) ? profile.priority : (index + 1) * 10,
     failoverEnabled: profile.failoverEnabled ?? true,
+    defaultHarness: normalizeHarnessSelection(profile.defaultHarness),
   }));
 }
 
@@ -61,6 +75,7 @@ export function clearLegacyProfiles() {
 export function loadThreads(): AgentThread[] {
   return readJson<AgentThread[]>(THREAD_KEY, []).map((thread) => ({
     ...thread,
+    harness: normalizeHarnessSelection(thread.harness),
     messages: thread.messages.map((item) => ({
       ...item,
       attachments: (item.attachments ?? []).map((attachment) => ({
@@ -122,6 +137,7 @@ export function createThread(workspace?: string): AgentThread {
     updatedAt: Date.now(),
     inputTokens: 0,
     outputTokens: 0,
+    harness: defaultHarnessSelection(),
   };
 }
 

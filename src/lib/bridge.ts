@@ -17,6 +17,7 @@ import type {
   GitStatus,
   GoalState,
   GatewayDiagnostics,
+  HarnessSelection,
   ImageAttachment,
   AttachmentPreview,
   ModelInfo,
@@ -31,6 +32,7 @@ import type {
   ProviderSettings,
   ProviderHealth,
   ProviderRequestLog,
+  PermissionLevel,
   SkillInfo,
   ToolCall,
   ToolExecutionResponse,
@@ -202,6 +204,8 @@ export async function agentTurn(
   profile: ProviderProfile,
   messages: AgentMessage[],
   mode: AgentMode,
+  harness: HarnessSelection,
+  permissionLevel: PermissionLevel,
   workspace?: string,
   threadId?: string,
   fallbackProfiles: ProviderProfile[] = [],
@@ -215,7 +219,7 @@ export async function agentTurn(
     attachments,
   }));
   return invoke<AgentTurnResponse>("agent_turn", {
-    request: { profile, messages: cleanMessages, mode, workspace, threadId, fallbackProfiles },
+    request: { profile, messages: cleanMessages, mode, workspace, threadId, fallbackProfiles, harness, permissionLevel },
   });
 }
 
@@ -223,6 +227,8 @@ export async function agentTurnStream(
   profile: ProviderProfile,
   messages: AgentMessage[],
   mode: AgentMode,
+  harness: HarnessSelection,
+  permissionLevel: PermissionLevel,
   workspace: string | undefined,
   operationId: string,
   onDelta: (delta: string) => void,
@@ -242,7 +248,7 @@ export async function agentTurnStream(
     if (event.kind === "content_delta" && event.delta) onDelta(event.delta);
   };
   return invoke<AgentTurnResponse>("agent_turn_stream", {
-    request: { profile, messages: cleanMessages, mode, workspace, threadId, fallbackProfiles },
+    request: { profile, messages: cleanMessages, mode, workspace, threadId, fallbackProfiles, harness, permissionLevel },
     operationId,
     onEvent,
   });
@@ -356,9 +362,11 @@ export async function executeTool(
   threadId?: string,
   profile?: ProviderProfile,
   fallbackProfiles: ProviderProfile[] = [],
+  harness: HarnessSelection = { family: "auto", density: "auto", compilerMode: "auto" },
+  permissionLevel: PermissionLevel = "full",
 ): Promise<ToolExecutionResponse> {
   return invoke<ToolExecutionResponse>("execute_tool", {
-    request: { name: call.name, arguments: call.arguments, workspace, threadId, profile, fallbackProfiles },
+    request: { name: call.name, arguments: call.arguments, workspace, threadId, profile, fallbackProfiles, harness, permissionLevel },
   });
 }
 

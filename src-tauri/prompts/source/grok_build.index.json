@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "source": "grok_build.md",
+  "defaultSections": [
+    "identity",
+    "core_behavior",
+    "task_management",
+    "plan_mode",
+    "project_instructions",
+    "tool_policy",
+    "completion"
+  ],
+  "fullSections": [
+    "identity",
+    "core_behavior",
+    "task_management",
+    "plan_mode",
+    "project_instructions",
+    "tool_policy",
+    "completion"
+  ],
+  "sections": [
+    {
+      "id": "identity",
+      "category": "core",
+      "startLine": 1,
+      "endLine": 4
+    },
+    {
+      "id": "core_behavior",
+      "category": "behavior",
+      "startLine": 5,
+      "endLine": 11
+    },
+    {
+      "id": "task_management",
+      "category": "behavior",
+      "startLine": 12,
+      "endLine": 17
+    },
+    {
+      "id": "plan_mode",
+      "category": "behavior",
+      "startLine": 18,
+      "endLine": 22
+    },
+    {
+      "id": "project_instructions",
+      "category": "trust",
+      "startLine": 24,
+      "endLine": 28
+    },
+    {
+      "id": "tool_policy",
+      "category": "capability",
+      "startLine": 29,
+      "endLine": 37
+    },
+    {
+      "id": "completion",
+      "category": "behavior",
+      "startLine": 38,
+      "endLine": 42
+    }
+  ]
+}

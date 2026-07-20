@@ -1,0 +1,7 @@
+{
+  "productName": "LevelUpAgent Eval Codex",
+  "identifier": "com.levelup.agent.eval.codex",
+  "bundle": {
+    "active": false
+  }
+}

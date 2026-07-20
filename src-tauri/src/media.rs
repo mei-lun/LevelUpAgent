@@ -1886,6 +1886,7 @@ mod tests {
                 allow_unauthenticated: false,
                 priority: 100,
                 failover_enabled: true,
+                default_harness: crate::models::HarnessSelection::default(),
             },
             api_key: "secret".to_owned(),
         }

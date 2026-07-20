@@ -574,6 +574,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .permission-menu strong { font-size: var(--font-body); font-weight: 680; }
 .permission-menu small { color: var(--muted); font-size: var(--font-caption); line-height: 1.35; }
 .permission-option-check { display: grid; place-items: center; color: var(--accent); }
+.harness-picker { min-width: 0; display: flex; align-items: center; gap: 4px; }
+.harness-picker select { min-width: 0; max-width: 102px; height: 29px; padding: 0 22px 0 7px; border: 1px solid var(--line); border-radius: 6px; outline: none; background: rgba(255,255,255,.72); color: var(--muted); font-size: var(--font-caption); cursor: pointer; }
+.harness-picker select:first-child { max-width: 122px; }
+.harness-picker select:focus { border-color: rgba(217,88,67,.55); box-shadow: 0 0 0 2px rgba(217,88,67,.08); }
+.harness-picker select:disabled { cursor: default; opacity: .55; }
 
 .inspector { min-width: 0; overflow-y: auto; background: var(--panel); border-left: 1px solid var(--line); }
 .inspector-title { height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--line); }
@@ -731,7 +736,15 @@ button.detail-row { padding: 0; border: 0; background: transparent; text-align: 
 .connection-test .secondary-button { align-self: flex-start; }
 .model-id-control { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 36px; gap: 6px; }
 .model-id-control .model-id-clear { width: 36px; height: 36px; flex-basis: 36px; border: 1px solid var(--line-strong); background: #fff; }
-.failover-toggle.wide, .provider-health.wide, .config-writeback.wide { grid-column: 1 / -1; }
+.failover-toggle.wide, .provider-health.wide, .config-writeback.wide, .harness-default-field.wide { grid-column: 1 / -1; }
+.harness-default-field { display: grid; gap: 9px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.45); }
+.harness-default-field > span { display: flex; flex-direction: column; gap: 2px; }
+.harness-default-field > span strong { font-size: var(--font-caption); }
+.harness-default-field > span small { color: var(--muted); font-size: var(--font-caption); line-height: 1.45; }
+.harness-default-field > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.harness-default-field label { min-width: 0; display: grid; gap: 5px; color: var(--muted); font-size: var(--font-caption); }
+.harness-default-field select { min-width: 0; width: 100%; height: 36px; padding: 0 26px 0 9px; border: 1px solid var(--line-strong); border-radius: 5px; outline: none; background: #fff; color: var(--text); font-size: var(--font-small); }
+.harness-default-field select:focus { border-color: rgba(217,88,67,.55); box-shadow: 0 0 0 2px rgba(217,88,67,.08); }
 .failover-toggle { min-width: 0; display: flex; align-items: flex-start; gap: 9px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.45); color: #51544f; cursor: pointer; }
 .failover-toggle input { width: 15px; height: 15px; flex: 0 0 auto; margin-top: 1px; accent-color: var(--accent); }
 .failover-toggle > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -1233,12 +1246,14 @@ button.detail-row { padding: 0; border: 0; background: transparent; text-align: 
   .composer-wrap { padding: 7px 10px 10px; }
   .composer textarea { min-height: 54px; }
   .composer-toolbar { height: auto; min-height: 68px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 5px; padding: 4px 7px 7px; }
-  .mode-switch { width: 100%; grid-column: 1 / -1; }
+  .mode-switch { width: 100%; grid-column: 1 / -1; grid-row: 1; }
   .mode-switch button { min-width: 0; flex: 1; padding-inline: 5px; }
-  .permission-picker { grid-column: 1; }
+  .permission-picker { grid-column: 1; grid-row: 3; }
+  .harness-picker { grid-column: 1 / -1; grid-row: 2; }
+  .harness-picker select, .harness-picker select:first-child { max-width: none; flex: 1; }
   .composer-spacer { display: none; }
-  .composer-model-switcher { grid-column: 2; }
-  .send-button { grid-column: 3; }
+  .composer-model-switcher { grid-column: 2; grid-row: 3; }
+  .send-button { grid-column: 3; grid-row: 3; }
   .file-drop-overlay { inset: 7px; }
   .dialog-backdrop { padding: 12px; }
   .dialog { max-height: calc(100vh - 24px); }
@@ -1253,6 +1268,7 @@ button.detail-row { padding: 0; border: 0; background: transparent; text-align: 
   .config-writeback-heading > div { width: 100%; }
   .config-writeback-heading select { min-width: 0; flex: 1; }
   .config-write-result { align-items: flex-start; flex-direction: column; }
+  .harness-default-field > div { grid-template-columns: 1fr; }
   .mcp-dialog { height: calc(100vh - 24px); grid-template-rows: 68px minmax(0, 1fr) auto; }
   .mcp-layout { grid-template-columns: 1fr; grid-template-rows: 118px minmax(0, 1fr); }
   .mcp-server-list { grid-template-rows: 40px 78px; border-right: 0; border-bottom: 1px solid var(--line); }
@@ -1411,9 +1427,10 @@ button.detail-row { padding: 0; border: 0; background: transparent; text-align: 
   .levelup-connection-card:hover { border-color: rgba(251,113,133,.32); box-shadow: 0 8px 22px rgba(0,0,0,.16); }
   .levelup-connection-logo { border-color: rgba(255,255,255,.12); }
   .levelup-detail-link { border-top-color: rgba(226,232,240,.09) !important; }
-  .failover-toggle, .provider-health, .config-writeback { background: rgba(255,255,255,.025); }
+  .failover-toggle, .provider-health, .config-writeback, .harness-default-field { background: rgba(255,255,255,.025); }
   .provider-health-metrics > span, .gateway-diagnostics span { background: rgba(255,255,255,.035); }
   .config-writeback select { background: #30332f; }
+  .harness-picker select, .harness-default-field select { border-color: rgba(255,255,255,.12); background: #30332f; color: var(--text); }
   .new-task-button, .workspace-button, .model-pill, .tool-call, .subagent-result, .composer, .secondary-button, .field input, .field textarea, .field select, .model-id-control .model-id-clear, .connection-picker select, .migration-row, .protocol-switch button.active, .mode-switch button.active, .mcp-server-row.active { background: #30332f; color: var(--text); }
   .model-menu { border-color: rgba(255,255,255,.1); background: rgba(43,46,42,.98); }
   .permission-button { border-color: rgba(255,255,255,.09); background: rgba(255,255,255,.04); }

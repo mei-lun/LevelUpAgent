@@ -10,6 +10,55 @@ pub enum ProviderProtocol {
     GeminiGenerateContent,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum HarnessFamily {
+    #[default]
+    Auto,
+    LevelUpGeneric,
+    Codex,
+    ClaudeCode,
+    GrokBuild,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptDensity {
+    #[default]
+    Auto,
+    Lean,
+    Full,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskCompilerMode {
+    Off,
+    #[default]
+    Auto,
+    Always,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct HarnessSelection {
+    #[serde(default)]
+    pub family: HarnessFamily,
+    #[serde(default)]
+    pub density: PromptDensity,
+    #[serde(default)]
+    pub compiler_mode: TaskCompilerMode,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PermissionLevel {
+    Request,
+    Agent,
+    #[default]
+    Full,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderProfile {
@@ -24,6 +73,8 @@ pub struct ProviderProfile {
     pub priority: i32,
     #[serde(default = "default_true")]
     pub failover_enabled: bool,
+    #[serde(default)]
+    pub default_harness: HarnessSelection,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -113,6 +164,10 @@ pub struct AgentTurnRequest {
     pub fallback_profiles: Vec<ProviderProfile>,
     #[serde(default)]
     pub custom_instructions: Option<String>,
+    #[serde(default)]
+    pub harness: HarnessSelection,
+    #[serde(default)]
+    pub permission_level: PermissionLevel,
 }
 
 #[derive(Debug, Serialize)]
@@ -229,6 +284,10 @@ pub struct ToolExecutionRequest {
     pub profile: Option<ProviderProfile>,
     #[serde(default)]
     pub fallback_profiles: Vec<ProviderProfile>,
+    #[serde(default)]
+    pub harness: HarnessSelection,
+    #[serde(default)]
+    pub permission_level: PermissionLevel,
 }
 
 #[derive(Debug, Serialize)]
@@ -489,6 +548,8 @@ pub struct StoredThread {
     pub updated_at: i64,
     pub input_tokens: u64,
     pub output_tokens: u64,
+    #[serde(default)]
+    pub harness: HarnessSelection,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

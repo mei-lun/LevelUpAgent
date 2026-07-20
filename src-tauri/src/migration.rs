@@ -422,6 +422,7 @@ pub fn profile_from_candidate(candidate: &ExternalConfigCandidate) -> ProviderPr
         allow_unauthenticated: false,
         priority: 100,
         failover_enabled: true,
+        default_harness: crate::models::HarnessSelection::default(),
     }
 }
 

@@ -1,0 +1,49 @@
+{
+  "toolAliases": [
+    { "source": "run_terminal_command", "target": "run_command", "targetTool": "run_command" },
+    { "source": "exec_command", "target": "run_command", "targetTool": "run_command" },
+    { "source": "`Bash`", "target": "`run_command`", "targetTool": "run_command" },
+    { "source": "search_replace", "target": "write_file", "targetTool": "write_file" },
+    { "source": "apply_patch", "target": "write_file", "targetTool": "write_file" },
+    { "source": "`Edit`", "target": "`write_file`", "targetTool": "write_file" },
+    { "source": "`Write`", "target": "`write_file`", "targetTool": "write_file" },
+    { "source": "`Read`", "target": "`read_file`", "targetTool": "read_file" },
+    { "source": "`Grep`", "target": "`search_files`", "targetTool": "search_files" },
+    { "source": "`Glob`", "target": "`list_files`", "targetTool": "list_files" },
+    { "source": "`rg --files`", "target": "`list_files`", "targetTool": "list_files" },
+    { "source": "`rg`", "target": "`search_files`", "targetTool": "search_files" },
+    { "source": "`ls`", "target": "`list_files`", "targetTool": "list_files" },
+    { "source": "spawn_subagent", "target": "delegate_task", "targetTool": "delegate_task" },
+    { "source": "read_skill", "target": "read_skill", "targetTool": "read_skill" }
+  ],
+  "unsupportedTokens": [
+    "todo_write",
+    "enter_plan_mode",
+    "exit_plan_mode",
+    "ask_user_question",
+    "memory_search",
+    "memory_get",
+    "monitor tool",
+    "get_command_or_subagent_output",
+    "kill_command_or_subagent",
+    "search_tool",
+    "use_tool",
+    "web.run",
+    "file_search",
+    "api_tool",
+    "artifact_tool",
+    "openpyxl",
+    "genui",
+    "image_gen",
+    "WebFetch",
+    "WebSearch",
+    "screenshot tool"
+  ],
+  "textReplacements": [
+    { "source": "the `commentary` channel", "target": "ordinary progress updates" },
+    { "source": "the `final` channel", "target": "the final response" },
+    { "source": "commentary channel", "target": "progress updates" },
+    { "source": "final channel", "target": "final response" },
+    { "source": "multi_tool_use.parallel", "target": "multiple independent tool calls" }
+  ]
+}

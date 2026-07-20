@@ -1,0 +1,6 @@
+{
+  "name": "levelup-eval-reservation-diagnosis",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test" }
+}

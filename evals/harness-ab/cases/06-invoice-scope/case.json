@@ -1,0 +1,6 @@
+{
+  "id": "06-invoice-scope",
+  "title": "Invoice calculation with dirty worktree",
+  "publicTest": ["node", "--test"],
+  "dirtyOverlay": "dirty-overlay"
+}

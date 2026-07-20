@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "source": "codex_gpt_5_6_sol.md",
+  "defaultSections": [
+    "identity",
+    "trustworthiness",
+    "engineering_workflow",
+    "tool_policy",
+    "permissions",
+    "reasoning",
+    "completion"
+  ],
+  "fullSections": [
+    "identity",
+    "trustworthiness",
+    "engineering_workflow",
+    "tool_policy",
+    "permissions",
+    "reasoning",
+    "completion"
+  ],
+  "sections": [
+    {
+      "id": "identity",
+      "category": "core",
+      "startLine": 1,
+      "endLine": 4
+    },
+    {
+      "id": "trustworthiness",
+      "category": "safety",
+      "startLine": 5,
+      "endLine": 11
+    },
+    {
+      "id": "engineering_workflow",
+      "category": "behavior",
+      "startLine": 12,
+      "endLine": 19
+    },
+    {
+      "id": "tool_policy",
+      "category": "capability",
+      "startLine": 20,
+      "endLine": 28
+    },
+    {
+      "id": "permissions",
+      "category": "safety",
+      "startLine": 29,
+      "endLine": 34
+    },
+    {
+      "id": "reasoning",
+      "category": "communication",
+      "startLine": 35,
+      "endLine": 40
+    },
+    {
+      "id": "completion",
+      "category": "behavior",
+      "startLine": 41,
+      "endLine": 45
+    }
+  ]
+}
