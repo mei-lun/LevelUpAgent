@@ -1,15 +1,10 @@
-.pet-nav-button { position: relative; width: 100%; min-height: 48px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 7px; margin: 5px 0 2px; padding: 3px 9px; border: 1px solid rgba(16,185,129,.14); border-radius: 8px; background: rgba(236,253,245,.62); color: #475569; text-align: left; cursor: pointer; transition: border-color .16s ease, background .16s ease, color .16s ease, transform .16s ease; }
-.pet-nav-button:hover { border-color: rgba(244,63,94,.22); background: rgba(255,241,242,.82); color: #e11d48; transform: translateY(-1px); }
-.pet-nav-button.active { border-color: rgba(244,63,94,.24); background: #fff1f2; color: #e11d48; box-shadow: 0 5px 18px rgba(244,63,94,.08); }
-.pet-nav-button > .pet-avatar { width: 32px; height: 35px; }
-.pet-nav-button > span:not(.pet-avatar, .pet-nav-progress, .pet-nav-fallback) { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.pet-nav-button strong { font-size: var(--font-small); font-weight: 720; }
-.pet-nav-button small { overflow: hidden; color: var(--muted); font-size: var(--font-compact); text-overflow: ellipsis; white-space: nowrap; }
-.pet-nav-fallback { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 7px; background: #d1fae5; color: #047857; }
-.pet-nav-progress { min-width: 31px; height: 23px; display: flex; align-items: center; justify-content: center; gap: 3px; padding: 0 6px; border-radius: 999px; background: rgba(245,158,11,.13); color: #b45309; font-size: var(--font-compact); font-variant-numeric: tabular-nums; }
-.pet-nav-progress b { font-weight: 780; }
 .pet-message-avatar { overflow: hidden; padding: 0; background: #fff1f2; }
 .pet-message-avatar .pet-avatar { width: 36px; height: 39px; transform: translate(-2px, -2px); }
+
+.pet-dialog.dialog { position: relative; width: min(1180px, 100%); height: min(780px, calc(100vh - 48px)); overflow: hidden; }
+.pet-dialog > .pet-studio { width: 100%; height: 100%; }
+.pet-dialog .pet-studio-header { padding-right: 62px; }
+.pet-dialog-close { position: absolute; z-index: 6; top: 16px; right: 18px; }
 
 .pet-studio { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-rows: 64px minmax(0, 1fr); background: var(--canvas); }
 .pet-studio-loading { place-items: center; align-content: center; gap: 12px; color: var(--muted); }
@@ -129,16 +124,10 @@
   .pet-stage-section { min-height: 520px; }
 }
 
-@media (max-width: 820px) {
-  .pet-nav-button { width: 40px; min-height: 40px; grid-template-columns: 1fr; justify-items: center; margin-inline: auto; padding: 0; }
-  .pet-nav-button > span:not(.pet-avatar, .pet-nav-progress, .pet-nav-fallback), .pet-nav-button > svg:last-child { display: none; }
-  .pet-nav-button > .pet-avatar { width: 31px; height: 34px; }
-  .pet-nav-button > .pet-nav-progress { position: absolute; top: -5px; right: -6px; min-width: 19px; width: 19px; height: 19px; padding: 0; }
-  .pet-nav-progress > svg { display: none; }
-}
-
 @media (max-width: 680px) {
   .pet-studio-header { padding-inline: 10px; }
+  .pet-dialog .pet-studio-header { padding-right: 54px; }
+  .pet-dialog-close { right: 10px; }
   .pet-chat-button { width: 34px; padding: 0; font-size: 0; }
   .pet-studio-body { display: block; overflow-y: auto; }
   .pet-roster { min-height: 128px; display: block; overflow: hidden; border-right: 0; border-bottom: 1px solid var(--line); }
@@ -155,9 +144,6 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .pet-nav-button { border-color: rgba(52,211,153,.12); background: rgba(16,185,129,.07); color: #cbd5e1; }
-  .pet-nav-button.active { border-color: rgba(251,113,133,.2); background: rgba(244,63,94,.14); color: #fda4af; }
-  .pet-nav-progress { background: rgba(245,158,11,.14); color: #fcd34d; }
   .pet-studio-mark, .pet-roster-row.active, .pet-import-row:hover { background: rgba(10,132,255,.12); }
   .pet-stage-section { background-color: var(--canvas); background-image: linear-gradient(rgba(148,163,184,.07) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.07) 1px, transparent 1px); }
   .pet-activity-bubble { border-color: rgba(255,255,255,.1); background: rgba(28,28,30,.84); box-shadow: 0 12px 30px rgba(0,0,0,.26), inset 0 0 0 .5px rgba(255,255,255,.06); }

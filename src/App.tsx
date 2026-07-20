@@ -232,7 +232,7 @@ interface PetHatchJob {
   startedAt: number;
 }
 
-type WorkspaceView = "chat" | "media" | "pet";
+type WorkspaceView = "chat" | "media";
 
 function commandNeedsAgentApproval(call: ToolCall) {
   const command = typeof call.arguments.command === "string" ? call.arguments.command.trim() : "";
@@ -333,6 +333,7 @@ function App() {
   const [runningThreadIds, setRunningThreadIds] = useState<Set<string>>(() => new Set());
   const [pendingApprovals, setPendingApprovals] = useState<Record<string, PendingApproval>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [petOpen, setPetOpen] = useState(false);
   const [themesOpen, setThemesOpen] = useState(false);
   const [themes, setThemes] = useState<ThemeManifest[]>([]);
   const [activeThemeId, setActiveThemeId] = useState(loadActiveThemeId);
@@ -411,7 +412,6 @@ function App() {
   const lastMessageLength =
     activeThread.messages[activeThread.messages.length - 1]?.content.length ?? 0;
   const activePetProfile = petProfiles.find((profile) => profile.id === activeThread.petId);
-  const selectedPetProfile = petProfiles.find((profile) => profile.id === activePetId) ?? petProfiles[0];
   const petActivities = useMemo(
     () => buildPetActivities(threads, runningThreadIds, pendingApprovals, mediaPendingCount, petProfiles, locale),
     [threads, runningThreadIds, pendingApprovals, mediaPendingCount, petProfiles, locale],
@@ -681,6 +681,7 @@ function App() {
     setGoalState(goal);
     setMode("goal");
     setWorkspaceView("chat");
+    setPetOpen(false);
     setPetHatchJob({ threadId: nextThread.id, startedAt: runStartedAt });
     setNotice(tr("残影孵化任务已启动，完成后会自动导入", "Echo hatching started and will auto-import when complete"));
     void runAgent(
@@ -1150,6 +1151,7 @@ function App() {
       setActivePetId(petId);
       setPetProfiles(dashboard.pets);
       setWorkspaceView("chat");
+      setPetOpen(false);
       setDraft("");
       setDraftAttachments([]);
     } catch (error) {
@@ -1935,21 +1937,6 @@ function App() {
           {mediaPendingCount > 0 ? <span className="media-nav-progress" title={tr(`${mediaPendingCount} 个结果正在生成`, `${mediaPendingCount} outputs generating`)}><LoaderCircle className="spin" size={12} /><b>{mediaPendingCount}</b></span> : <Sparkles size={14} />}
         </button>
 
-        <button
-          className={`pet-nav-button${workspaceView === "pet" ? " active" : ""}`}
-          type="button"
-          aria-current={workspaceView === "pet" ? "page" : undefined}
-          onClick={() => {
-            setWorkspaceView("pet");
-            setProfileMenuOpen(false);
-            setProjectMenuKey(null);
-          }}
-        >
-          {selectedPetProfile ? <PetAvatar profile={selectedPetProfile} /> : <span className="pet-nav-fallback"><PawPrint size={16} /></span>}
-          <span><strong>{tr("摇光残影", "Starlight Echo")}</strong><small>{selectedPetProfile?.displayName ?? "Yui"} · {petActivities.length > 0 ? tr(`${petActivities.length} 个任务`, `${petActivities.length} tasks`) : tr("正在陪伴", "Keeping you company")}</small></span>
-          {petActivities.length > 0 ? <span className="pet-nav-progress"><LoaderCircle className="spin" size={12} /><b>{petActivities.length}</b></span> : <PawPrint size={14} />}
-        </button>
-
         {sidebarSearchOpen && (
           <div className="sidebar-search">
             <Search size={14} />
@@ -2096,20 +2083,6 @@ function App() {
     />
   );
 
-  const petStudioSlot = (
-    <PetStudio
-      active={workspaceView === "pet"}
-      locale={locale}
-      activities={petActivities}
-      connectionReady={connectionReady}
-      revision={petCatalogRevision}
-      onActivePetChange={setActivePetId}
-      onOpenConversation={(petId) => { void openPetConversation(petId); }}
-      onGenerate={generatePet}
-      onNotice={setNotice}
-    />
-  );
-
   const workspaceSlot = workspaceView === "chat" ? (
       <main
         className={`workspace-shell${fileDragActive ? " file-drag-active" : ""}`}
@@ -2185,6 +2158,14 @@ function App() {
           <div className="topbar-actions">
             <IconButton label={tr("切换到 English", "Switch to 中文")} onClick={toggleLocale}>
               <Languages size={17} />
+            </IconButton>
+            <IconButton
+              label={tr("打开摇光残影", "Open Starlight Echoes")}
+              aria-haspopup="dialog"
+              aria-expanded={petOpen}
+              onClick={() => setPetOpen(true)}
+            >
+              <PawPrint size={17} />
             </IconButton>
             <IconButton
               label={tr("切换主题", "Switch theme")}
@@ -2285,7 +2266,7 @@ function App() {
           onStop={stopAgent}
         />
       </main>
-  ) : workspaceView === "pet" ? petStudioSlot : null;
+  ) : null;
 
   const inspectorSlot = workspaceView === "chat" && rightPanelOpen ? (
     <Inspector
@@ -2337,6 +2318,10 @@ function App() {
             setSettingsOpen(false);
             setLogsOpen(true);
           }}
+          onOpenPet={() => {
+            setSettingsOpen(false);
+            setPetOpen(true);
+          }}
           onOpenThemes={() => {
             setSettingsOpen(false);
             setThemesOpen(true);
@@ -2350,6 +2335,20 @@ function App() {
               setKeyStatusLoaded(true);
             }
           }}
+        />
+      )}
+
+      {petOpen && (
+        <PetDialog
+          locale={locale}
+          activities={petActivities}
+          connectionReady={connectionReady}
+          revision={petCatalogRevision}
+          onActivePetChange={setActivePetId}
+          onOpenConversation={(petId) => { void openPetConversation(petId); }}
+          onGenerate={generatePet}
+          onNotice={setNotice}
+          onClose={() => setPetOpen(false)}
         />
       )}
 
@@ -2481,9 +2480,10 @@ function App() {
         qq2007Toolbar: (
           <QQ2007Toolbar
             workspaceView={workspaceView}
+            petOpen={petOpen}
             onNewThread={() => newThread()}
             onMedia={() => setWorkspaceView("media")}
-            onPet={() => setWorkspaceView("pet")}
+            onPet={() => setPetOpen(true)}
             onExtensions={() => setMcpOpen(true)}
             onWebsite={() => void openLevelUpWebsite()}
             onReview={() => {
@@ -2571,6 +2571,7 @@ function QQ2007TitleBar({ title }: { title: string }) {
 
 function QQ2007Toolbar({
   workspaceView,
+  petOpen,
   onNewThread,
   onMedia,
   onPet,
@@ -2581,6 +2582,7 @@ function QQ2007Toolbar({
   onThemes,
 }: {
   workspaceView: WorkspaceView;
+  petOpen: boolean;
   onNewThread: () => void;
   onMedia: () => void;
   onPet: () => void;
@@ -2593,7 +2595,7 @@ function QQ2007Toolbar({
   const items = [
     ["new-task", tr("新建任务", "New task"), onNewThread, false],
     ["scheduled", tr("创作空间", "Studio"), onMedia, workspaceView === "media"],
-    ["groups", tr("摇光残影", "Echo"), onPet, workspaceView === "pet"],
+    ["groups", tr("摇光残影", "Echo"), onPet, petOpen],
     ["plugins", tr("插件", "Extensions"), onExtensions, false],
     ["sites", tr("站点", "Website"), onWebsite, false],
     ["pull-request", tr("审查", "Review"), onReview, false],
@@ -2673,6 +2675,57 @@ function QQ2007StatusBar({ permissionLevel, running }: { permissionLevel: Permis
       <span>{tr("别迷恋姐，姐只是个传说。", "Make something wonderful.")}</span>
       <span className="qq2007-status-security"><i className="qq2007-icon qq2007-icon-security" />{permissionLabel(permissionLevel)}</span>
     </footer>
+  );
+}
+
+function PetDialog({
+  locale,
+  activities,
+  connectionReady,
+  revision,
+  onActivePetChange,
+  onOpenConversation,
+  onGenerate,
+  onNotice,
+  onClose,
+}: {
+  locale: AppLocale;
+  activities: PetActivity[];
+  connectionReady: boolean;
+  revision: number;
+  onActivePetChange: (petId: string) => void;
+  onOpenConversation: (petId: string) => void;
+  onGenerate: (request: PetGenerationRequest) => Promise<void>;
+  onNotice: (message: string) => void;
+  onClose: () => void;
+}) {
+  const dialogRef = useModalKeyboard(onClose);
+  return (
+    <div className="dialog-backdrop" onMouseDown={onClose}>
+      <div
+        ref={dialogRef}
+        className="dialog pet-dialog"
+        onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={tr("摇光残影", "Starlight Echoes")}
+      >
+        <IconButton className="pet-dialog-close" label={tr("关闭摇光残影", "Close Starlight Echoes")} onClick={onClose}>
+          <X size={18} />
+        </IconButton>
+        <PetStudio
+          active
+          locale={locale}
+          activities={activities}
+          connectionReady={connectionReady}
+          revision={revision}
+          onActivePetChange={onActivePetChange}
+          onOpenConversation={onOpenConversation}
+          onGenerate={onGenerate}
+          onNotice={onNotice}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -3527,6 +3580,7 @@ function ConnectionDialog({
   onOpenSkills,
   onOpenInstructions,
   onOpenLogs,
+  onOpenPet,
   onOpenThemes,
   onSave,
   onRemove,
@@ -3540,6 +3594,7 @@ function ConnectionDialog({
   onOpenSkills: () => void;
   onOpenInstructions: () => void;
   onOpenLogs: () => void;
+  onOpenPet: () => void;
   onOpenThemes: () => void;
   onSave: (profile: ProviderProfile, key: string) => Promise<void>;
   onRemove: (profileId: string) => Promise<void>;
@@ -3870,6 +3925,7 @@ function ConnectionDialog({
             <button className="secondary-button" onClick={onOpenSkills}><BookOpen size={14} /> Skills</button>
             <button className="secondary-button" onClick={onOpenInstructions}><BrainCircuit size={14} /> Instructions</button>
             <button className="secondary-button" onClick={onOpenLogs}><Activity size={14} /> {tr("请求日志", "Request logs")}</button>
+            <button className="secondary-button" onClick={onOpenPet}><PawPrint size={14} /> {tr("摇光残影", "Starlight Echoes")}</button>
             <button className="secondary-button" onClick={onOpenThemes}><Palette size={14} /> {tr("主题", "Themes")}</button>
             <UpdateButton key={getAppLocale()} />
             {localKeyConfigured && <button className="danger-text-button" onClick={async () => { await onDeleteKey(draftProfile.id); setLocalKeyConfigured(false); }}>{tr("移除密钥", "Remove key")}</button>}
