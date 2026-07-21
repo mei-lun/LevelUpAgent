@@ -28,7 +28,7 @@
 - 实现 Thread 显式选择、Provider 默认选择和按模型自动推荐的解析优先级。
 - Provider、Thread、Agent 请求和隔离 Sub-Agent 工具链均携带 Harness 配置。
 - SQLite Schema 升级到 11，旧 Thread 自动迁移为 `Auto`。
-- Composer、Provider 设置和 Inspector 已接入 Harness；TaskCompilerMode 已持久化。
+- Composer、Provider 设置和 Inspector 已接入 Harness。
 - Harness、数据库迁移、原有四协议系统提示词与工具边界回归测试通过。
 
 尚未完成：
@@ -37,7 +37,7 @@
 - Harness 切换事件、结构化 ToolStatus、Prompt Inspector 元数据展示和请求日志指标。
 - 项目分层 Instructions、Git Snapshot 和完成门禁。
 
-当前 UI 中的 Task Compiler 选项仅保存策略，为 Phase 2 预留；在 `prompt_compiler.rs` 和 `compile_user_turn` 落地前不会额外调用模型。
+当前代码和 UI 不包含 Task Compiler 占位配置。该能力仍属于 Phase 2 路线图，待 `prompt_compiler.rs` 和 `compile_user_turn` 真正落地时再同时引入配置、持久化和界面。
 
 ## 2. 最终目标
 
@@ -850,7 +850,7 @@ Task Compiler：
 
 ### 16.2 Provider 设置
 
-Provider 可保存默认 Harness、Density 和 TaskCompilerMode。新会话继承 Provider 默认值，Thread 随后可以显式覆盖。
+Phase 2 完成后，Provider 才可保存默认 TaskCompilerMode。当前 Provider 只保存默认 Harness 和 Density；新会话继承 Provider 默认值，Thread 随后可以显式覆盖。
 
 ### 16.3 Inspector
 

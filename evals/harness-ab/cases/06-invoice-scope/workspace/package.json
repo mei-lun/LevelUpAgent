@@ -1,6 +1,0 @@
-{
-  "name": "levelup-eval-invoice",
-  "private": true,
-  "type": "module",
-  "scripts": { "test": "node --test" }
-}

@@ -25,14 +25,13 @@ export const defaultProfile: ProviderProfile = {
 };
 
 export function defaultHarnessSelection(): HarnessSelection {
-  return { family: "auto", density: "auto", compilerMode: "auto" };
+  return { family: "auto", density: "auto" };
 }
 
 export function normalizeHarnessSelection(value?: Partial<HarnessSelection>): HarnessSelection {
   return {
     family: value?.family ?? "auto",
     density: value?.density ?? "auto",
-    compilerMode: value?.compilerMode ?? "auto",
   };
 }
 

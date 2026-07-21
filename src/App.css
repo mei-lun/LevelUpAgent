@@ -792,7 +792,7 @@ button.detail-row { padding: 0; border: 0; background: transparent; text-align: 
 .harness-default-field > span { display: flex; flex-direction: column; gap: 2px; }
 .harness-default-field > span strong { font-size: var(--font-caption); }
 .harness-default-field > span small { color: var(--muted); font-size: var(--font-caption); line-height: 1.45; }
-.harness-default-field > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.harness-default-field > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .harness-default-field label { min-width: 0; display: grid; gap: 5px; color: var(--muted); font-size: var(--font-caption); }
 .harness-default-field select { min-width: 0; width: 100%; height: 36px; padding: 0 26px 0 9px; border: 1px solid var(--line-strong); border-radius: 5px; outline: none; background: #fff; color: var(--text); font-size: var(--font-small); }
 .harness-default-field select:focus { border-color: rgba(217,88,67,.55); box-shadow: 0 0 0 2px rgba(217,88,67,.08); }

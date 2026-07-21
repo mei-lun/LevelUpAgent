@@ -1,6 +1,0 @@
-{
-  "id": "01-ttl-cache",
-  "title": "TTL cache boundary bug",
-  "publicTest": ["node", "--test"],
-  "dirtyOverlay": null
-}

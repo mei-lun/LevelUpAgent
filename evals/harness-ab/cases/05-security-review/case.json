@@ -1,6 +1,0 @@
-{
-  "id": "05-security-review",
-  "title": "Download helper security review",
-  "publicTest": ["node", "--test"],
-  "dirtyOverlay": null
-}

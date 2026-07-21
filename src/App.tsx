@@ -3190,17 +3190,6 @@ function Composer({
                 <option value="full">Full</option>
               </select>
             )}
-            <select
-              aria-label={tr("任务编译器", "Task compiler")}
-              title={tr("是否调用提示词优化模型", "Whether to call the prompt optimization model")}
-              value={harness.compilerMode}
-              disabled={disabled || running}
-              onChange={(event) => onHarnessChange({ compilerMode: event.target.value as HarnessSelection["compilerMode"] })}
-            >
-              <option value="off">{tr("优化：关闭", "Optimize: Off")}</option>
-              <option value="auto">{tr("优化：自动", "Optimize: Auto")}</option>
-              <option value="always">{tr("优化：总是", "Optimize: Always")}</option>
-            </select>
           </div>
           <span className="composer-spacer" />
           {modelControl}
@@ -3704,7 +3693,7 @@ function ConnectionDialog({
       allowUnauthenticated: false,
       priority: Math.max(10, ...profiles.map((item) => item.priority + 10)),
       failoverEnabled: true,
-      defaultHarness: { family: "auto", density: "auto", compilerMode: "auto" },
+      defaultHarness: { family: "auto", density: "auto" },
     });
     setApiKey("");
     setModels([]);
@@ -3994,14 +3983,6 @@ function ConnectionDialog({
                   <option value="auto">Auto</option>
                   <option value="lean">Lean</option>
                   <option value="full">Full</option>
-                </select>
-              </label>
-              <label>
-                <span>{tr("提示词优化", "Prompt optimization")}</span>
-                <select value={draftProfile.defaultHarness.compilerMode} onChange={(event) => updateDefaultHarness({ compilerMode: event.target.value as HarnessSelection["compilerMode"] })}>
-                  <option value="off">{tr("关闭", "Off")}</option>
-                  <option value="auto">Auto</option>
-                  <option value="always">{tr("总是", "Always")}</option>
                 </select>
               </label>
             </div>

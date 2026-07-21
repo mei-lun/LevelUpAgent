@@ -599,7 +599,7 @@ export async function executeTool(
   threadId?: string,
   profile?: ProviderProfile,
   fallbackProfiles: ProviderProfile[] = [],
-  harness: HarnessSelection = { family: "auto", density: "auto", compilerMode: "auto" },
+  harness: HarnessSelection = { family: "auto", density: "auto" },
   permissionLevel: PermissionLevel = "full",
 ): Promise<ToolExecutionResponse> {
   return invoke<ToolExecutionResponse>("execute_tool", {

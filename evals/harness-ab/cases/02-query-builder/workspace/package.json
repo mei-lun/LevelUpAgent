@@ -1,6 +1,0 @@
-{
-  "name": "levelup-eval-query-builder",
-  "private": true,
-  "type": "module",
-  "scripts": { "test": "node --test" }
-}

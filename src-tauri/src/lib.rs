@@ -2682,16 +2682,6 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            if option_env!("LEVELUP_EVAL_BUILD").is_some() {
-                let title = if agent::EVAL_LEGACY_PROMPT {
-                    "LevelUpAgent Eval - LEGACY"
-                } else {
-                    "LevelUpAgent Eval - CODEX"
-                };
-                if let Some(window) = app.get_webview_window("main") {
-                    window.set_title(title)?;
-                }
-            }
             ensure_default_workspace(app.handle())
                 .map_err(|error| -> Box<dyn std::error::Error> { error.into() })?;
             let app_data = app.path().app_data_dir()?;

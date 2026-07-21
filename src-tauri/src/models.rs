@@ -30,15 +30,6 @@ pub enum PromptDensity {
     Full,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum TaskCompilerMode {
-    Off,
-    #[default]
-    Auto,
-    Always,
-}
-
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct HarnessSelection {
@@ -46,8 +37,6 @@ pub struct HarnessSelection {
     pub family: HarnessFamily,
     #[serde(default)]
     pub density: PromptDensity,
-    #[serde(default)]
-    pub compiler_mode: TaskCompilerMode,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]

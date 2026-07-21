@@ -12,12 +12,10 @@ export type HarnessFamily =
   | "grok_build";
 
 export type PromptDensity = "auto" | "lean" | "full";
-export type TaskCompilerMode = "off" | "auto" | "always";
 
 export interface HarnessSelection {
   family: HarnessFamily;
   density: PromptDensity;
-  compilerMode: TaskCompilerMode;
 }
 
 export interface ProviderProfile {

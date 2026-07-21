@@ -1,6 +1,0 @@
-{
-  "id": "04-diagnose-reservation",
-  "title": "Diagnose reservation leak",
-  "publicTest": ["node", "--test"],
-  "dirtyOverlay": null
-}

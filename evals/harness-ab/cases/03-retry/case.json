@@ -1,6 +1,0 @@
-{
-  "id": "03-retry",
-  "title": "Async retry control flow",
-  "publicTest": ["node", "--test"],
-  "dirtyOverlay": null
-}

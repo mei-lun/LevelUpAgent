@@ -6,10 +6,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::models::{
     GoalCreateRequest, GoalState, GoalStatus, HarnessFamily, HarnessSelection, ImageAttachment,
     McpServerConfig, McpTransport, MediaAsset, MediaKind, MediaStatus, PromptDensity,
-    ProviderHealth, ProviderRequestLog, ProviderSettings, StoredMessage, StoredThread,
-    TaskCompilerMode, ToolCall,
+    ProviderHealth, ProviderRequestLog, ProviderSettings, StoredMessage, StoredThread, ToolCall,
 };
-
 
 const SCHEMA_VERSION: i64 = 11;
 
@@ -55,8 +53,7 @@ impl Database {
                     input_tokens INTEGER NOT NULL DEFAULT 0,
                     output_tokens INTEGER NOT NULL DEFAULT 0,
                     harness_family TEXT NOT NULL DEFAULT 'auto',
-                    harness_density TEXT NOT NULL DEFAULT 'auto',
-                    task_compiler_mode TEXT NOT NULL DEFAULT 'auto'
+                    harness_density TEXT NOT NULL DEFAULT 'auto'
                  );
 
                  CREATE TABLE IF NOT EXISTS messages (
@@ -240,7 +237,6 @@ impl Database {
         for (column, definition) in [
             ("harness_family", "TEXT NOT NULL DEFAULT 'auto'"),
             ("harness_density", "TEXT NOT NULL DEFAULT 'auto'"),
-            ("task_compiler_mode", "TEXT NOT NULL DEFAULT 'auto'"),
         ] {
             if !thread_columns.iter().any(|existing| existing == column) {
                 connection
@@ -309,7 +305,7 @@ impl Database {
         let mut statement = connection
             .prepare(
                 "SELECT id, title, workspace, updated_at, input_tokens, output_tokens,
-                        harness_family, harness_density, task_compiler_mode
+                        harness_family, harness_density
                  FROM threads ORDER BY updated_at DESC LIMIT 200",
             )
             .map_err(database_error)?;
@@ -324,7 +320,6 @@ impl Database {
                     row.get::<_, i64>(5)?,
                     row.get::<_, String>(6)?,
                     row.get::<_, String>(7)?,
-                    row.get::<_, String>(8)?,
                 ))
             })
             .map_err(database_error)?;
@@ -359,7 +354,6 @@ impl Database {
             output_tokens,
             harness_family,
             harness_density,
-            task_compiler_mode,
         ) in summaries
         {
             let messages = message_statement
@@ -400,7 +394,6 @@ impl Database {
                 harness: HarnessSelection {
                     family: parse_harness_family(&harness_family),
                     density: parse_prompt_density(&harness_density),
-                    compiler_mode: parse_task_compiler_mode(&task_compiler_mode),
                 },
             });
         }
@@ -417,8 +410,8 @@ impl Database {
             .execute(
                 "INSERT INTO threads
                     (id, title, workspace, updated_at, input_tokens, output_tokens,
-                     harness_family, harness_density, task_compiler_mode)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                     harness_family, harness_density)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                  ON CONFLICT(id) DO UPDATE SET
                     title = excluded.title,
                     workspace = excluded.workspace,
@@ -426,8 +419,7 @@ impl Database {
                     input_tokens = excluded.input_tokens,
                     output_tokens = excluded.output_tokens,
                     harness_family = excluded.harness_family,
-                    harness_density = excluded.harness_density,
-                    task_compiler_mode = excluded.task_compiler_mode",
+                    harness_density = excluded.harness_density",
                 params![
                     thread.id,
                     thread.title,
@@ -437,7 +429,6 @@ impl Database {
                     thread.output_tokens.min(i64::MAX as u64) as i64,
                     harness_family_id(thread.harness.family),
                     prompt_density_id(thread.harness.density),
-                    task_compiler_mode_id(thread.harness.compiler_mode),
                 ],
             )
             .map_err(database_error)?;
@@ -1429,22 +1420,6 @@ fn parse_prompt_density(value: &str) -> PromptDensity {
     }
 }
 
-fn task_compiler_mode_id(value: TaskCompilerMode) -> &'static str {
-    match value {
-        TaskCompilerMode::Off => "off",
-        TaskCompilerMode::Auto => "auto",
-        TaskCompilerMode::Always => "always",
-    }
-}
-
-fn parse_task_compiler_mode(value: &str) -> TaskCompilerMode {
-    match value {
-        "off" => TaskCompilerMode::Off,
-        "always" => TaskCompilerMode::Always,
-        _ => TaskCompilerMode::Auto,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1478,7 +1453,6 @@ mod tests {
             harness: HarnessSelection {
                 family: HarnessFamily::ClaudeCode,
                 density: PromptDensity::Lean,
-                compiler_mode: TaskCompilerMode::Always,
             },
         }
     }
@@ -1580,11 +1554,6 @@ mod tests {
             thread_columns
                 .iter()
                 .any(|column| column == "harness_density")
-        );
-        assert!(
-            thread_columns
-                .iter()
-                .any(|column| column == "task_compiler_mode")
         );
         assert!(columns.iter().any(|column| column == "model_name"));
         assert!(columns.iter().any(|column| column == "provider_brand"));

@@ -1,1 +1,0 @@
-VIP customer: preserve the gift-wrap request and call before dispatch.
