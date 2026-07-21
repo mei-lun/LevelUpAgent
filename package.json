@@ -9,6 +9,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "check": "tsc --noEmit && node --test scripts/test-media-concurrency.mjs && node scripts/test-release-config.mjs",
+    "build:windows": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
     "build:macos": "bash scripts/build-macos.sh",
     "verify:levelupapi": "node scripts/verify-levelupapi.mjs",
     "preview": "vite preview",

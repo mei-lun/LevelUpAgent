@@ -158,6 +158,25 @@ pnpm tauri dev
 
 ### 验证与构建
 
+Windows 下可在项目根目录直接运行一键脚本：
+
+```powershell
+.\Build-Windows.cmd
+```
+
+默认执行依赖安装、前端检查、Rust 格式检查和测试，并生成 NSIS 安装包。产物统一复制到
+`artifacts\windows`，同时生成 `SHA256SUMS.txt`。其他常用方式：
+
+```powershell
+.\Build-Windows.cmd -Bundle msi       # 生成 MSI
+.\Build-Windows.cmd -Bundle all       # 同时生成 NSIS 和 MSI
+.\Build-Windows.cmd -Bundle none      # 只生成应用 EXE
+.\Build-Windows.cmd -SkipTests        # 跳过检查和测试，快速构建
+.\Build-Windows.cmd -SkipInstall      # 已安装依赖时跳过 pnpm install
+```
+
+也可以继续手动执行：
+
 ```bash
 pnpm check
 pnpm build
