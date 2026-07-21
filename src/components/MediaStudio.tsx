@@ -65,6 +65,13 @@ interface PromptDraft {
   prompt: string;
 }
 
+interface MediaHistoryLoadState {
+  loaded: boolean;
+  loading: boolean;
+  loadingMore: boolean;
+  hasMore: boolean;
+}
+
 type StudioMediaAsset = MediaAsset & {
   pendingOutput?: { index: number; total: number };
 };
@@ -81,6 +88,7 @@ interface PreviewTransform extends PreviewPoint {
 const MIN_PREVIEW_ZOOM = 0.05;
 const MAX_PREVIEW_ZOOM = 4;
 const PREVIEW_ZOOM_STEP = 1.2;
+const MEDIA_HISTORY_PAGE_SIZE = 24;
 
 interface MediaStudioProps {
   active: boolean;
@@ -150,7 +158,14 @@ export function MediaStudio({ active, locale, mediaCatalogRevision, dropActive, 
   const [refreshing, setRefreshing] = useState(false);
   const [pastingReferences, setPastingReferences] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
+  const [historyState, setHistoryState] = useState<Record<MediaKind, MediaHistoryLoadState>>({
+    image: { loaded: false, loading: false, loadingMore: false, hasMore: false },
+    video: { loaded: false, loading: false, loadingMore: false, hasMore: false },
+    audio: { loaded: false, loading: false, loadingMore: false, hasMore: false },
+  });
   const catalogRequestRef = useRef(0);
+  const catalogRevisionRef = useRef<number | null>(null);
+  const historyRequestRef = useRef<Record<MediaKind, number>>({ image: 0, video: 0, audio: 0 });
 
   const models = useMemo(
     () => (catalog?.models ?? []).filter((model) => model.kind === kind),
@@ -177,6 +192,7 @@ export function MediaStudio({ active, locale, mediaCatalogRevision, dropActive, 
   const visibleAssets = assets.filter((asset) => asset.kind === kind);
   const visiblePendingAssets = pendingAssets.filter((asset) => asset.kind === kind);
   const displayedAssets: StudioMediaAsset[] = [...visiblePendingAssets, ...visibleAssets];
+  const currentHistoryState = historyState[kind];
   const previewableAssets = displayedAssets.filter(
     (asset) => asset.kind === "image" && asset.status === "completed" && Boolean(mediaAssetUrl(asset)),
   );
@@ -184,18 +200,15 @@ export function MediaStudio({ active, locale, mediaCatalogRevision, dropActive, 
     .filter((asset) => asset.kind === "video" && (asset.status === "queued" || asset.status === "in_progress"))
     .map((asset) => asset.id);
 
-  const load = async (showSpinner = true) => {
+  const loadCatalog = async (showSpinner = true) => {
     const requestId = ++catalogRequestRef.current;
     if (showSpinner) setLoading(true);
     setError(null);
     try {
-      const [nextCatalog, nextAssets] = await Promise.all([
-        getMediaCatalog(),
-        listMediaAssets(),
-      ]);
+      const nextCatalog = await getMediaCatalog();
       if (requestId !== catalogRequestRef.current) return;
       setCatalog(nextCatalog);
-      setAssets(nextAssets);
+      catalogRevisionRef.current = mediaCatalogRevision;
     } catch (reason) {
       if (requestId === catalogRequestRef.current) setError(errorText(reason));
     } finally {
@@ -203,9 +216,57 @@ export function MediaStudio({ active, locale, mediaCatalogRevision, dropActive, 
     }
   };
 
+  const loadHistory = async (targetKind: MediaKind, reset = false) => {
+    const requestId = ++historyRequestRef.current[targetKind];
+    const offset = reset ? 0 : assets.filter((asset) => asset.kind === targetKind).length;
+    setHistoryState((current) => ({
+      ...current,
+      [targetKind]: {
+        ...current[targetKind],
+        loading: reset,
+        loadingMore: !reset,
+      },
+    }));
+    try {
+      const page = await listMediaAssets(targetKind, MEDIA_HISTORY_PAGE_SIZE, offset);
+      if (requestId !== historyRequestRef.current[targetKind]) return;
+      setAssets((current) => mergeAssets(
+        reset ? current.filter((asset) => asset.kind !== targetKind) : current,
+        page.assets,
+      ));
+      setHistoryState((current) => ({
+        ...current,
+        [targetKind]: {
+          ...current[targetKind],
+          loaded: true,
+          hasMore: page.hasMore,
+        },
+      }));
+    } catch (reason) {
+      if (requestId === historyRequestRef.current[targetKind]) setError(errorText(reason));
+    } finally {
+      if (requestId === historyRequestRef.current[targetKind]) {
+        setHistoryState((current) => ({
+          ...current,
+          [targetKind]: {
+            ...current[targetKind],
+            loading: false,
+            loadingMore: false,
+          },
+        }));
+      }
+    }
+  };
+
   useEffect(() => {
-    void load();
+    if (!active || catalogRevisionRef.current === mediaCatalogRevision) return;
+    void loadCatalog();
   }, [active, mediaCatalogRevision]);
+
+  useEffect(() => {
+    if (!active || historyState[kind].loaded || historyState[kind].loading) return;
+    void loadHistory(kind, true);
+  }, [active, kind]);
 
   useEffect(() => {
     if (!selected) return;
@@ -533,7 +594,7 @@ export function MediaStudio({ active, locale, mediaCatalogRevision, dropActive, 
 
   const refreshAll = async () => {
     setRefreshing(true);
-    await load(false);
+    await Promise.all([loadCatalog(false), loadHistory(kind, true)]);
     setRefreshing(false);
   };
 
@@ -720,14 +781,22 @@ export function MediaStudio({ active, locale, mediaCatalogRevision, dropActive, 
         <section className="media-gallery-panel">
           <div className="media-gallery-heading">
             <div>
-              <strong>{tr("创作历史", "Creation history")}</strong><span>{visibleAssets.length}</span>
+              <strong>{tr("创作历史", "Creation history")}</strong><span title={currentHistoryState.hasMore ? tr("还有更多历史未读取", "More history is available") : undefined}>{visibleAssets.length}{currentHistoryState.hasMore ? "+" : ""}</span>
               {visiblePendingAssets.length > 0 && <em><LoaderCircle className="spin" size={12} />{tr(`${visiblePendingAssets.length} 个生成中`, `${visiblePendingAssets.length} generating`)}</em>}
             </div>
             <small>{tr("结果保存在本机应用数据目录", "Outputs are stored in local app data")}</small>
           </div>
-          {loading ? <div className="media-empty"><LoaderCircle className="spin" size={24} /><span>{tr("正在读取模型和历史", "Loading models and history")}</span></div>
+          {currentHistoryState.loading && !currentHistoryState.loaded ? <div className="media-empty"><LoaderCircle className="spin" size={24} /><span>{tr("正在读取首段历史", "Loading recent history")}</span></div>
             : displayedAssets.length === 0 ? <div className="media-empty"><KindIcon kind={kind} /><strong>{tr("还没有作品", "No creations yet")}</strong><span>{tr("输入提示词后，结果会自动出现在这里", "Generated outputs will appear here automatically")}</span></div>
-              : <div className="media-gallery-grid">{displayedAssets.map((asset) => <MediaAssetCard asset={asset} locale={locale} onDelete={asset.pendingOutput ? undefined : () => void removeAsset(asset)} onPreview={asset.kind === "image" && asset.status === "completed" ? () => setPreviewAsset(asset) : undefined} key={asset.id} />)}</div>}
+              : <>
+                <div className="media-gallery-grid">{displayedAssets.map((asset) => <MediaAssetCard asset={asset} locale={locale} onDelete={asset.pendingOutput ? undefined : () => void removeAsset(asset)} onPreview={asset.kind === "image" && asset.status === "completed" ? () => setPreviewAsset(asset) : undefined} key={asset.id} />)}</div>
+                {currentHistoryState.hasMore && <div className="media-history-pagination">
+                  <button type="button" disabled={currentHistoryState.loadingMore} onClick={() => void loadHistory(kind)}>
+                    {currentHistoryState.loadingMore && <LoaderCircle className="spin" size={14} />}
+                    {currentHistoryState.loadingMore ? tr("正在读取下一段", "Loading next page") : tr(`继续读取 ${MEDIA_HISTORY_PAGE_SIZE} 条`, `Load ${MEDIA_HISTORY_PAGE_SIZE} more`)}
+                  </button>
+                </div>}
+              </>}
         </section>
       </div>
       {active && previewAsset && <MediaImagePreview

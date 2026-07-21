@@ -125,8 +125,9 @@ pub fn read_enabled(
 
 /// Return the stable preference key used by `scan` for a Skill manifest.
 ///
-/// Discovery canonicalizes manifest paths before hashing them. Built-in Skill
-/// setup must use the same normalization instead of a human-readable name.
+/// Built-in Skill setup must use the same canonical path normalization as
+/// discovery; otherwise a Skill can be marked enabled under a name that the
+/// scanner will never recognize.
 pub fn id_for_path(path: &Path) -> String {
     let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     skill_id(&canonical.to_string_lossy())

@@ -28,9 +28,9 @@ use models::{
     AgentTurnResponse, AttachmentPreview, ConfigWritePreview, ConfigWriteResult,
     ExternalConfigCandidate, ExternalConfigTarget, GatewayDiagnostics, GitDiff, GitRollbackPreview,
     GitRollbackResult, GitStatus, GoalCreateRequest, GoalState, ImageAttachment, McpSecretValues,
-    McpServerConfig, McpServerSnapshot, McpServerUpsert, MediaAsset, MediaBatchResult,
-    MediaCatalog, MediaGenerationRequest, MediaKind, MediaStatus, ModelInfo, ProviderHealth,
-    ProviderProfile, ProviderRequestLog, ProviderSettings, SkillInfo, StoredThread,
+    McpServerConfig, McpServerSnapshot, McpServerUpsert, MediaAsset, MediaAssetPage,
+    MediaBatchResult, MediaCatalog, MediaGenerationRequest, MediaKind, MediaStatus, ModelInfo,
+    ProviderHealth, ProviderProfile, ProviderRequestLog, ProviderSettings, SkillInfo, StoredThread,
     ToolExecutionRequest, ToolExecutionResponse,
 };
 use reqwest::Client;
@@ -259,6 +259,9 @@ fn attach_skills(
     let enabled: Vec<_> = discover_skills(app, database, request.workspace.as_deref())?
         .into_iter()
         .filter(|skill| skill.enabled && skill.valid)
+        .filter(|skill| {
+            !request.hatch || skill.source == "LevelUpAgent built-in" && skill.name == "hatch-pet"
+        })
         .take(64)
         .collect();
     request.available_skills = enabled
@@ -269,7 +272,21 @@ fn attach_skills(
             description: skill.description.chars().take(500).collect(),
         })
         .collect();
-    if !enabled.is_empty() {
+    // Keep this phase explicit as well as history-derived. The frontend sends
+    // the phase on every continuation because context compaction can omit the
+    // original successful manifest exchange from the provider request.
+    let hatch_skill_loaded = request.hatch
+        && (request.hatch_skill_loaded || agent::hatch_skill_was_read(&request.messages));
+    request.hatch_skill_loaded = hatch_skill_loaded;
+    if request.hatch && !hatch_skill_loaded {
+        return Err(
+            "Hatch bootstrap has not completed; the application must load the bundled legacy hatch-pet Skill before starting a provider turn".to_owned(),
+        );
+    }
+    // Hatch bootstrap is owned by the application. Never expose the generic
+    // read_skill tool to a provider turn: models that see it can emit several
+    // identical reads in one response and restart the workflow indefinitely.
+    if !enabled.is_empty() && !request.hatch {
         request.available_tools.push(AgentToolDefinition {
             name: "read_skill".to_owned(),
             description: "Read an enabled Skill's SKILL.md or a referenced UTF-8 file inside that Skill directory.".to_owned(),
@@ -313,29 +330,47 @@ fn attach_goal(
     ) {
         return Err("Goal is not active; resume it before continuing".to_owned());
     }
+    // Hatch conversations were created by older clients without a durable
+    // hatch flag. Infer the workflow from the generated objective before the
+    // skill/tool catalogs are attached so a resumed legacy thread cannot
+    // expose read_skill/get_goal and fall back into an observation loop.
+    if is_hatch_goal_objective(&goal.objective) {
+        request.hatch = true;
+    }
     request.goal = Some(goal);
-    request.available_tools.extend([
-        AgentToolDefinition {
+    if !request.hatch {
+        request.available_tools.push(AgentToolDefinition {
             name: "get_goal".to_owned(),
-            description: "Read the current persistent Goal, status, usage, and audit state.".to_owned(),
+            description: "Read the current persistent Goal, status, usage, and audit state."
+                .to_owned(),
             input_schema: serde_json::json!({ "type": "object", "properties": {} }),
             read_only: true,
-        },
-        AgentToolDefinition {
-            name: "update_goal".to_owned(),
-            description: "Request Goal completion or report a repeated blocker with concrete evidence. The first completion request starts an audit; a second evidence-backed request during auditing completes it.".to_owned(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "status": { "type": "string", "enum": ["complete", "blocked"] },
-                    "evidence": { "type": "string" }
-                },
-                "required": ["status", "evidence"]
-            }),
-            read_only: true,
-        },
-    ]);
+        });
+    }
+    request.available_tools.push(AgentToolDefinition {
+        name: "update_goal".to_owned(),
+        description: "Request Goal completion or report a repeated blocker with concrete evidence. The first completion request starts an audit; a second evidence-backed request during auditing completes it.".to_owned(),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "status": { "type": "string", "enum": ["complete", "blocked"] },
+                "evidence": { "type": "string" }
+            },
+            "required": ["status", "evidence"]
+        }),
+        read_only: true,
+    });
     Ok(())
+}
+
+fn is_hatch_goal_objective(objective: &str) -> bool {
+    let normalized = objective.trim().to_ascii_lowercase();
+    normalized.contains("孵化摇光残影")
+        || (normalized.contains("hatch")
+            && (normalized.contains("starlight echo")
+                || normalized.contains("hatch-pet")
+                || normalized.contains("pet")))
+        || (normalized.contains("残影") && normalized.contains("孵化"))
 }
 
 fn attach_custom_instructions(
@@ -1460,9 +1495,17 @@ async fn generate_media(
 fn list_media_assets(
     app: tauri::AppHandle,
     database: tauri::State<'_, database::Database>,
+    kind: MediaKind,
     limit: Option<usize>,
-) -> Result<Vec<MediaAsset>, String> {
-    media::list_assets(&database, &media_storage(&app)?, limit.unwrap_or(200))
+    offset: Option<usize>,
+) -> Result<MediaAssetPage, String> {
+    media::list_assets_page(
+        &database,
+        &media_storage(&app)?,
+        &kind,
+        limit.unwrap_or(24),
+        offset.unwrap_or(0),
+    )
 }
 
 async fn refresh_media_asset_internal(
@@ -1952,6 +1995,8 @@ where
             mode: "subagent".to_owned(),
             workspace: Some(worktree.path.to_string_lossy().into_owned()),
             thread_id: Some(child_thread_id.clone()),
+            hatch: false,
+            hatch_skill_loaded: false,
             available_tools: Vec::new(),
             available_skills: Vec::new(),
             goal: None,
@@ -1997,6 +2042,8 @@ where
                     profile: None,
                     fallback_profiles: Vec::new(),
                     hatch: false,
+                    hatch_skill_loaded: false,
+                    hatch_bootstrap: false,
                 })
                 .await
             } else {
@@ -2471,6 +2518,62 @@ async fn execute_media_job_check(
     }
 }
 
+fn hatch_command_is_observation(arguments: &serde_json::Value) -> bool {
+    let Some(command) = arguments.get("command").and_then(serde_json::Value::as_str) else {
+        return false;
+    };
+    let normalized = command.to_ascii_lowercase();
+    normalized.contains("levelup-pet-hatch.json")
+        || [
+            "get-childitem",
+            " gci",
+            " get-content",
+            " gc ",
+            " type ",
+            " cat ",
+            " more ",
+            "select-string",
+            "findstr",
+            " rg ",
+            " grep ",
+            "get-location",
+            " pwd",
+        ]
+        .iter()
+        .any(|marker| normalized.starts_with(marker.trim()) || normalized.contains(marker))
+}
+
+fn hatch_tool_policy_error(request: &ToolExecutionRequest) -> Option<&'static str> {
+    if !request.hatch {
+        return None;
+    }
+    if matches!(
+        request.name.as_str(),
+        "get_goal" | "list_files" | "read_file" | "search_files"
+    ) {
+        return Some(
+            "This observation tool is unavailable during pet hatching. The Goal and pet target are already attached; run prepare_pet_run.py or the next concrete hatch command.",
+        );
+    }
+    if request.name == "run_command" && hatch_command_is_observation(&request.arguments) {
+        return Some(
+            "This workspace observation command is unavailable during pet hatching. The Goal and pet target are already attached; run prepare_pet_run.py or the next concrete hatch command.",
+        );
+    }
+    if request.name != "read_skill" || request.hatch_bootstrap {
+        return None;
+    }
+    if request.hatch_skill_loaded {
+        Some(
+            "The bundled hatch-pet Skill is already loaded; read_skill is closed for this provider turn. Run prepare_pet_run.py or the next concrete hatch command.",
+        )
+    } else {
+        Some(
+            "read_skill is application-owned during pet hatching and is unavailable to provider turns. Run prepare_pet_run.py or the next concrete hatch command.",
+        )
+    }
+}
+
 #[tauri::command]
 async fn execute_tool(
     app: tauri::AppHandle,
@@ -2480,6 +2583,23 @@ async fn execute_tool(
     subagents: tauri::State<'_, subagent::SubagentManager>,
     mut request: ToolExecutionRequest,
 ) -> Result<ToolExecutionResponse, String> {
+    // Older clients did not persist the hatch flag on every tool request.
+    // Recover it from the durable Goal before applying the tool policy so a
+    // resumed legacy thread cannot re-expose read_skill/get_goal or bypass
+    // grounded media generation merely because its frontend flag was lost.
+    if !request.hatch
+        && let Some(thread_id) = request.thread_id.as_deref()
+        && let Some(goal) = database.get_goal(thread_id)?
+        && is_hatch_goal_objective(&goal.objective)
+    {
+        request.hatch = true;
+    }
+    if let Some(output) = hatch_tool_policy_error(&request) {
+        return Ok(ToolExecutionResponse {
+            output: output.to_owned(),
+            is_error: true,
+        });
+    }
     if request.workspace.trim().is_empty() {
         request.workspace = ensure_default_workspace(&app)?
             .to_string_lossy()
@@ -3075,7 +3195,17 @@ pub fn run() {
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_process::init());
+        .plugin(tauri_plugin_process::init())
+        // The app stores conversations, Goals, and hatch state in one shared
+        // SQLite database. A second process would race the first process's
+        // pause/resume and hydration logic, so bring the existing window to
+        // the foreground instead of starting another state machine.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }));
     let builder = if option_env!("LEVELUP_ENABLE_UPDATER").is_some() {
         builder.plugin(tauri_plugin_updater::Builder::new().build())
     } else {
@@ -3215,6 +3345,8 @@ mod tests {
             profile: None,
             fallback_profiles: Vec::new(),
             hatch: true,
+            hatch_skill_loaded: false,
+            hatch_bootstrap: false,
         };
         let references = read_hatch_job_references(&request).unwrap().unwrap();
         assert_eq!(references.len(), 1);
@@ -3242,6 +3374,57 @@ mod tests {
     }
 
     #[test]
+    fn hatch_tool_policy_rejects_state_refreshes_and_loaded_manifest_rereads() {
+        let mut request = ToolExecutionRequest {
+            name: "get_goal".to_owned(),
+            arguments: serde_json::json!({}),
+            workspace: "C:/hatch".to_owned(),
+            thread_id: Some("hatch-thread".to_owned()),
+            profile: None,
+            fallback_profiles: Vec::new(),
+            hatch: true,
+            hatch_skill_loaded: true,
+            hatch_bootstrap: false,
+        };
+        assert!(hatch_tool_policy_error(&request).is_some());
+
+        request.name = "read_skill".to_owned();
+        assert!(hatch_tool_policy_error(&request).is_some());
+        request.arguments = serde_json::json!({ "path": "./SKILL.md" });
+        assert!(hatch_tool_policy_error(&request).is_some());
+        request.arguments = serde_json::json!({ "path": "references/animation-rows.md" });
+        assert!(hatch_tool_policy_error(&request).is_some());
+
+        request.name = "run_command".to_owned();
+        request.arguments =
+            serde_json::json!({ "command": "Get-Content .\\levelup-pet-hatch.json" });
+        assert!(hatch_tool_policy_error(&request).is_some());
+        request.arguments =
+            serde_json::json!({ "command": "python prepare_pet_run.py --output-dir C:/run" });
+        assert!(hatch_tool_policy_error(&request).is_none());
+
+        request.hatch_bootstrap = true;
+        assert!(hatch_tool_policy_error(&request).is_none());
+
+        request.hatch = false;
+        request.name = "get_goal".to_owned();
+        assert!(hatch_tool_policy_error(&request).is_none());
+    }
+
+    #[test]
+    fn hatch_goal_objective_detection_covers_legacy_and_english_requests() {
+        assert!(is_hatch_goal_objective(
+            "孵化摇光残影“Noct”：黑发蓝眼，黑色披风"
+        ));
+        assert!(is_hatch_goal_objective(
+            "Hatch the Starlight Echo \"Noct\" using the hatch-pet workflow"
+        ));
+        assert!(is_hatch_goal_objective("Hatch a custom pet named Noct"));
+        assert!(is_hatch_goal_objective("孵化残影 Noct"));
+        assert!(!is_hatch_goal_objective("分析当前项目并修复测试失败"));
+    }
+
+    #[test]
     fn provider_candidates_keep_primary_first_and_sort_enabled_fallbacks() {
         let request = AgentTurnRequest {
             profile: profile("primary", 999, false),
@@ -3249,6 +3432,8 @@ mod tests {
             mode: "chat".to_owned(),
             workspace: None,
             thread_id: None,
+            hatch: false,
+            hatch_skill_loaded: false,
             available_tools: Vec::new(),
             available_skills: Vec::new(),
             goal: None,
@@ -3275,6 +3460,8 @@ mod tests {
             mode: "agent".to_owned(),
             workspace: None,
             thread_id: Some("thread-media".to_owned()),
+            hatch: false,
+            hatch_skill_loaded: false,
             available_tools: Vec::new(),
             available_skills: Vec::new(),
             goal: None,
@@ -3288,6 +3475,96 @@ mod tests {
                 .iter()
                 .any(|tool| tool.name == "generate_images")
         );
+    }
+
+    #[test]
+    fn hatch_goal_keeps_updates_but_does_not_expose_goal_refresh() {
+        let root =
+            std::env::temp_dir().join(format!("levelup-hatch-goal-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let database = database::Database::open(&root.join("test.sqlite3")).unwrap();
+        let thread_id = "hatch-thread".to_owned();
+        database
+            .create_goal(&GoalCreateRequest {
+                thread_id: thread_id.clone(),
+                objective: "Hatch the requested pet".to_owned(),
+            })
+            .unwrap();
+        let mut request = AgentTurnRequest {
+            profile: profile("primary", 10, true),
+            messages: Vec::new(),
+            mode: "goal".to_owned(),
+            workspace: Some(root.to_string_lossy().into_owned()),
+            thread_id: Some(thread_id),
+            hatch: true,
+            hatch_skill_loaded: false,
+            available_tools: Vec::new(),
+            available_skills: Vec::new(),
+            goal: None,
+            fallback_profiles: Vec::new(),
+            custom_instructions: None,
+        };
+
+        attach_goal(&database, &mut request).unwrap();
+
+        assert!(request.goal.is_some());
+        assert!(
+            request
+                .available_tools
+                .iter()
+                .any(|tool| tool.name == "update_goal")
+        );
+        assert!(
+            request
+                .available_tools
+                .iter()
+                .all(|tool| tool.name != "get_goal")
+        );
+        drop(database);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn legacy_hatch_goal_forces_hatch_mode_before_catalog_attachment() {
+        let root = std::env::temp_dir().join(format!(
+            "levelup-legacy-hatch-goal-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let database = database::Database::open(&root.join("test.sqlite3")).unwrap();
+        let thread_id = "legacy-hatch-thread".to_owned();
+        database
+            .create_goal(&GoalCreateRequest {
+                thread_id: thread_id.clone(),
+                objective: "孵化摇光残影“Noct”：黑发蓝眼，黑色披风".to_owned(),
+            })
+            .unwrap();
+        let mut request = AgentTurnRequest {
+            profile: profile("primary", 10, true),
+            messages: Vec::new(),
+            mode: "goal".to_owned(),
+            workspace: Some(root.to_string_lossy().into_owned()),
+            thread_id: Some(thread_id),
+            hatch: false,
+            hatch_skill_loaded: true,
+            available_tools: Vec::new(),
+            available_skills: Vec::new(),
+            goal: None,
+            fallback_profiles: Vec::new(),
+            custom_instructions: None,
+        };
+
+        attach_goal(&database, &mut request).unwrap();
+
+        assert!(request.hatch);
+        assert!(
+            request
+                .available_tools
+                .iter()
+                .all(|tool| tool.name != "get_goal")
+        );
+        drop(database);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -3436,6 +3713,8 @@ mod tests {
             mode: "chat".to_owned(),
             workspace: None,
             thread_id: Some("thread-failover".to_owned()),
+            hatch: false,
+            hatch_skill_loaded: false,
             available_tools: Vec::new(),
             available_skills: Vec::new(),
             goal: None,
@@ -3495,6 +3774,8 @@ mod tests {
             mode: "chat".to_owned(),
             workspace: None,
             thread_id: Some("thread-local".to_owned()),
+            hatch: false,
+            hatch_skill_loaded: false,
             available_tools: Vec::new(),
             available_skills: Vec::new(),
             goal: None,
@@ -3559,18 +3840,23 @@ mod tests {
             "the recommended image model is not the highest-ranked available model"
         );
         println!(
-            "discovered_image_models={} recommended_image_model={}",
+            "discovered_image_models={} recommended_image_model={} ids={:?}",
             image_models.len(),
-            recommended.id
+            recommended.id,
+            image_models
+                .iter()
+                .map(|model| model.id.as_str())
+                .collect::<Vec<_>>()
         );
 
         if std::env::var("LEVELUP_REAL_MEDIA_GENERATE").as_deref() != Ok("1") {
             return;
         }
+        let requested_model = std::env::var("LEVELUP_REAL_MEDIA_MODEL").ok();
         let request = MediaGenerationRequest {
             profile_id: None,
             kind: MediaKind::Image,
-            model: None,
+            model: requested_model.clone(),
             prompt: "A minimal verification image: one coral circle centered on a clean warm-white background, no text".to_owned(),
             count: 1,
             size: Some("1024x1024".to_owned()),
@@ -3589,7 +3875,9 @@ mod tests {
         let selection = selections
             .first()
             .expect("automatic image selection returned no candidate");
-        assert_eq!(selection.model, recommended.id);
+        if requested_model.is_none() {
+            assert_eq!(selection.model, recommended.id);
+        }
         let storage = app_data.join("media");
         let result = media::generate_batch(
             &client,
@@ -3665,6 +3953,8 @@ mod tests {
             profile: Some(child_profile),
             fallback_profiles: Vec::new(),
             hatch: false,
+            hatch_skill_loaded: false,
+            hatch_bootstrap: false,
         };
         let summary = run_isolated_subagent(
             &Client::new(),

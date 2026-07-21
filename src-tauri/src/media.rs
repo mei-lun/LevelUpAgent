@@ -13,8 +13,9 @@ use crate::agent;
 use crate::attachment::ManagedReference;
 use crate::database::Database;
 use crate::models::{
-    AttachmentKind, MediaAsset, MediaBatchResult, MediaCatalog, MediaGenerationRequest, MediaKind,
-    MediaModelInfo, MediaStatus, ProviderProfile, ProviderProtocol, VideoGenerationMode,
+    AttachmentKind, MediaAsset, MediaAssetPage, MediaBatchResult, MediaCatalog,
+    MediaGenerationRequest, MediaKind, MediaModelInfo, MediaStatus, ProviderProfile,
+    ProviderProtocol, VideoGenerationMode,
 };
 
 const MAX_PROMPT_CHARS: usize = 32_000;
@@ -254,6 +255,24 @@ pub fn list_assets(
         .into_iter()
         .map(|asset| enrich_asset(storage, asset))
         .collect()
+}
+
+pub fn list_assets_page(
+    database: &Database,
+    storage: &Path,
+    kind: &MediaKind,
+    limit: usize,
+    offset: usize,
+) -> Result<MediaAssetPage, String> {
+    let limit = limit.clamp(1, 100);
+    let mut assets = database.list_media_assets_page(kind, limit.saturating_add(1), offset)?;
+    let has_more = assets.len() > limit;
+    assets.truncate(limit);
+    let assets = assets
+        .into_iter()
+        .map(|asset| enrich_asset(storage, asset))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(MediaAssetPage { assets, has_more })
 }
 
 pub fn get_asset(

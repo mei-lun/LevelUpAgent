@@ -27,7 +27,7 @@ When invoking `$imagegen` from this skill, pass the generated pet prompt as the 
 
 ### LevelUpAgent adapter
 
-When this Skill is running inside LevelUpAgent, the built-in `generate_images` tool is the `$imagegen` execution boundary. An external Codex installation is not required. After `prepare_pet_run.py` creates a run, pass `hatchRunDir` and the exact pending `hatchJobId` on every image-generation call. The adapter loads that manifest job's `input_images` (including the canonical base and layout guide), rejects completed jobs, writes the unchanged provider bytes to `$CODEX_HOME/generated_images/levelup-agent/.../ig_*`, and returns the source path as `hatchSourcePaths`. Give that returned path to `record_imagegen_result.py`; never use the app's `media/` path or manually edit `imagegen-jobs.json`.
+When this Skill is running inside LevelUpAgent, the built-in `generate_images` tool is the `$imagegen` execution boundary. An external Codex installation is not required. After `prepare_pet_run.py` creates a run, pass `hatchRunDir` and the exact pending `hatchJobId` on every image-generation call. The adapter loads that manifest job's `input_images` (including the canonical base and layout guide), rejects completed jobs, writes the unchanged provider bytes to `$CODEX_HOME/generated_images/levelup-agent/.../ig_*`, and returns the source path as `hatchSourcePaths`. Give that returned path to `record_imagegen_result.py`; never use the app's `media/` path, manually copy or rename a source, or edit `imagegen-jobs.json`.
 
 Use this skill's scripts for deterministic work only: preparing prompts and manifests, ingesting selected `$imagegen` outputs, extracting frames, validating rows, composing the final atlas, creating QA media, and packaging.
 
@@ -159,6 +159,8 @@ python "$SKILL_DIR/scripts/derive_running_left_from_running_right.py" \
 ```
 
 If there is any asymmetric side-specific marking, readable text, non-mirrored logo, handed prop, one-sided accessory, lighting cue, or direction-specific pose that would become wrong when flipped, do not mirror. Generate `running-left` with `$imagegen` using its row prompt and all listed grounding images, including `decoded/running-right.png` as a gait reference.
+
+When deriving a mirrored row, mirror each frame in place and preserve the original left-to-right frame order so the animation phase is not reversed.
 
 For the built-in path, record the selected source image from `$CODEX_HOME/generated_images/.../ig_*.png`. Do not record files from the run directory, `tmp/`, hand-made fixtures, deterministic row folders, or post-processed copies as visual job sources.
 

@@ -383,6 +383,11 @@ export interface MediaAsset {
   updatedAt: number;
 }
 
+export interface MediaAssetPage {
+  assets: MediaAsset[];
+  hasMore: boolean;
+}
+
 export interface MediaBatchResult {
   batchId: string;
   assets: MediaAsset[];
