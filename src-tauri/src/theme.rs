@@ -100,10 +100,17 @@ fn validate_package(package: &ThemePackage) -> Result<(), String> {
             }
         }
     } else {
-        if package.manifest.layout.is_some() && package.manifest.layout_file.is_some() {
-            return Err("Theme package cannot define both layout and layoutFile".to_owned());
+        if package.manifest.layout.is_some()
+            && package.manifest.layout_file.is_some()
+            && !matches!(&package.manifest.layout, Some(ThemeLayout::Legacy(layout)) if layout == "standard")
+        {
+            return Err(
+                "Theme package cannot define both an embedded layout and layoutFile".to_owned(),
+            );
         }
-        if let Some(ThemeLayout::Legacy(_)) = &package.manifest.layout {
+        if let Some(ThemeLayout::Legacy(_)) = &package.manifest.layout
+            && package.manifest.layout_file.is_none()
+        {
             return Err("Theme schemaVersion 2 requires an embedded layout object".to_owned());
         }
         if let Some(ThemeLayout::Embedded(layout)) = &package.manifest.layout {
@@ -439,12 +446,15 @@ pub fn load_layout(storage: &Path, id: &str) -> Result<crate::layout::ResolvedLa
             theme_directory(storage, id).map(|directory| directory.join(layout_file))
         })
         .transpose()?;
+    if let Some(custom_layout) = custom_layout.as_deref() {
+        return crate::layout::resolve(Some(custom_layout), None);
+    }
     match package.manifest.layout.as_ref() {
         Some(ThemeLayout::Embedded(definition)) => {
             crate::layout::resolve_definition(Some(definition), None)
         }
         Some(ThemeLayout::Legacy(layout)) => crate::layout::resolve(None, Some(layout)),
-        None => crate::layout::resolve(custom_layout.as_deref(), None),
+        None => crate::layout::resolve(None, None),
     }
 }
 
@@ -554,6 +564,39 @@ mod tests {
         assert_eq!(load_layout(&storage, "qq-2007").unwrap().source, "default");
         uninstall(&storage, "qq-2007").unwrap();
         assert!(!storage.join("qq-2007").exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn accepts_legacy_standard_name_with_a_companion_layout() {
+        let root = std::env::temp_dir().join(format!(
+            "levelup-theme-legacy-companion-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let source = root.join("source.levelup-theme");
+        let source_layout = root.join("codex.layout.json");
+        let storage = root.join("installed");
+        std::fs::create_dir_all(&root).unwrap();
+        let mut package = sample();
+        package.manifest.schema_version = 2;
+        package.manifest.layout = Some(ThemeLayout::Legacy("standard".to_owned()));
+        package.manifest.layout_file = Some("codex.layout.json".to_owned());
+        std::fs::write(&source, serde_json::to_vec(&package).unwrap()).unwrap();
+        std::fs::write(
+            &source_layout,
+            include_bytes!("../../layouts/default.layout.json"),
+        )
+        .unwrap();
+        install(&storage, &source).unwrap();
+        assert_eq!(load_layout(&storage, "qq-2007").unwrap().source, "theme");
+        assert_eq!(
+            load_layout(&storage, "qq-2007")
+                .unwrap()
+                .definition
+                .get("id")
+                .and_then(serde_json::Value::as_str),
+            Some("default")
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 

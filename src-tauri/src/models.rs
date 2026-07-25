@@ -585,6 +585,13 @@ pub struct GitStatus {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GitBranch {
+    pub name: String,
+    pub current: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GitDiff {
     pub path: String,
     pub content: String,

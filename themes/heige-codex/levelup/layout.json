@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "codex",
+  "name": "Codex Layout",
+  "window": { "decorations": false },
+  "initialState": {},
+  "root": {
+    "type": "container",
+    "id": "codex-root",
+    "className": ["codex-layout"],
+    "children": [
+      { "type": "slot", "slot": "codexTitlebar" },
+      { "type": "slot", "slot": "sidebar" },
+      { "type": "slot", "slot": "mediaStudio" },
+      { "type": "slot", "slot": "workspace" },
+      { "type": "slot", "slot": "inspector" }
+    ]
+  }
+}

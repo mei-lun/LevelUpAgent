@@ -26,12 +26,12 @@ use base64::Engine;
 use models::{
     AgentMessage, AgentSkillSummary, AgentStreamEvent, AgentToolDefinition, AgentTurnRequest,
     AgentTurnResponse, AttachmentPreview, ConfigWritePreview, ConfigWriteResult,
-    ExternalConfigCandidate, ExternalConfigTarget, GatewayDiagnostics, GitDiff, GitRollbackPreview,
-    GitRollbackResult, GitStatus, GoalCreateRequest, GoalState, ImageAttachment, McpSecretValues,
-    McpServerConfig, McpServerSnapshot, McpServerUpsert, MediaAsset, MediaAssetPage,
-    MediaBatchResult, MediaCatalog, MediaGenerationRequest, MediaKind, MediaStatus, ModelInfo,
-    ProviderHealth, ProviderProfile, ProviderRequestLog, ProviderSettings, SkillInfo, StoredThread,
-    ToolExecutionRequest, ToolExecutionResponse, WritingProjectRecord,
+    ExternalConfigCandidate, ExternalConfigTarget, GatewayDiagnostics, GitBranch, GitDiff,
+    GitRollbackPreview, GitRollbackResult, GitStatus, GoalCreateRequest, GoalState,
+    ImageAttachment, McpSecretValues, McpServerConfig, McpServerSnapshot, McpServerUpsert,
+    MediaAsset, MediaAssetPage, MediaBatchResult, MediaCatalog, MediaGenerationRequest, MediaKind,
+    MediaStatus, ModelInfo, ProviderHealth, ProviderProfile, ProviderRequestLog, ProviderSettings,
+    SkillInfo, StoredThread, ToolExecutionRequest, ToolExecutionResponse, WritingProjectRecord,
 };
 use reqwest::Client;
 use serde::Deserialize;
@@ -3004,6 +3004,16 @@ async fn get_git_status(workspace: String) -> Result<GitStatus, String> {
 }
 
 #[tauri::command]
+async fn get_git_branches(workspace: String) -> Result<Vec<GitBranch>, String> {
+    git::branches(&workspace).await
+}
+
+#[tauri::command]
+async fn switch_git_branch(workspace: String, branch: String) -> Result<GitStatus, String> {
+    git::switch_branch(&workspace, &branch).await
+}
+
+#[tauri::command]
 async fn get_git_diff(workspace: String, path: String, staged: bool) -> Result<GitDiff, String> {
     git::diff(&workspace, &path, staged).await
 }
@@ -3333,6 +3343,8 @@ pub fn run() {
             scan_external_configs,
             import_external_config,
             get_git_status,
+            get_git_branches,
+            switch_git_branch,
             get_git_diff,
             preview_git_rollback,
             apply_git_rollback,

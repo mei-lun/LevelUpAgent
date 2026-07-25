@@ -16,6 +16,7 @@ const SLOT_NAMES: &[&str] = &[
     "workspace",
     "mediaStudio",
     "inspector",
+    "codexTitlebar",
     "qq2007Titlebar",
     "qq2007Toolbar",
     "qq2007RightPanel",
@@ -193,6 +194,7 @@ pub fn validate_definition(definition: &Value) -> Result<(), String> {
         .unwrap_or(true);
     if !decorations
         && !state.slots.contains("qq2007Titlebar")
+        && !state.slots.contains("codexTitlebar")
         && !["window.minimize", "window.toggleMaximize", "window.close"]
             .iter()
             .all(|action| state.actions.contains(*action))

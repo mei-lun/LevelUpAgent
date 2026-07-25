@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 2,
+  "id": "heige-codex",
+  "name": "HeiGe Codex Glass",
+  "version": "1.1.0",
+  "author": "LevelUpAgent contributors",
+  "description": "A local LevelUpAgent port of HeiGe Codex Skin Studio's cyan and magenta glass visual language.",
+  "layout": "standard",
+  "layoutFile": "codex.layout.json",
+  "homepage": "https://github.com/HeiGeAi/heige-codex-skin-studio",
+  "license": "MIT"
+}

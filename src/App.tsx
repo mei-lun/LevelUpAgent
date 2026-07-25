@@ -35,7 +35,9 @@ import {
   KeyRound,
   Languages,
   LoaderCircle,
+  Maximize2,
   MessageSquareText,
+  Minimize2,
   MoreHorizontal,
   Network,
   Palette,
@@ -89,7 +91,9 @@ import {
   executeTool,
   fetchModels,
   getGitDiff,
+  getGitBranches,
   getGitStatus,
+  switchGitBranch,
   getGoal,
   getDefaultWorkspace,
   getGatewayDiagnostics,
@@ -189,6 +193,7 @@ import type {
   ExternalConfigCandidate,
   ExternalConfigTarget,
   GitDiff,
+  GitBranch as GitBranchInfo,
   GitFileChange,
   GitRollbackPreview,
   GitStatus,
@@ -474,6 +479,10 @@ function App() {
   const [availableAppUpdate, setAvailableAppUpdate] = useState<AppUpdateInfo | null>(null);
   const [updateInstalling, setUpdateInstalling] = useState(false);
   const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
+  const [gitBranches, setGitBranches] = useState<GitBranchInfo[]>([]);
+  const [branchMenuOpen, setBranchMenuOpen] = useState(false);
+  const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false);
+  const [branchBusy, setBranchBusy] = useState(false);
   const [gitDiff, setGitDiff] = useState<GitDiff | null>(null);
   const [goalState, setGoalState] = useState<GoalState | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -500,6 +509,7 @@ function App() {
     profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0];
   const activeThread =
     threads.find((thread) => thread.id === activeThreadId) ?? threads[0];
+  const codexLayoutActive = activeLayout.definition.root.className?.includes("codex-layout") === true;
   activeThreadIdRef.current = activeThread.id;
   workspaceViewRef.current = workspaceView;
   activePetIdRef.current = activePetId;
@@ -510,6 +520,9 @@ function App() {
   const displayedProjectGroups = projectGroups.filter((project) => !project.workspace || !hiddenProjectKeys.has(project.key));
   const activeProjectKey = workspaceKey(activeThread.workspace);
   const activeUsesDefaultWorkspace = isDefaultWorkspace(activeThread.workspace, defaultWorkspace);
+  const activeProject = displayedProjectGroups.find((project) => project.key === activeProjectKey);
+  const activeProjectName = activeProject?.name
+    ?? (activeUsesDefaultWorkspace ? tr("临时工作区", "Temporary workspace") : tr("选择项目", "Choose project"));
   const connectionReady = keyStatusLoaded
     && (keyConfigured || activeProfile.allowUnauthenticated)
     && Boolean(activeProfile.model.trim());
@@ -552,6 +565,7 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!isDesktop()) return;
     let disposed = false;
     void getPetRuntime()
       .then((runtime) => {
@@ -1211,6 +1225,8 @@ function App() {
 
   useEffect(() => {
     const workspace = activeThread.workspace;
+    setGitBranches([]);
+    setBranchMenuOpen(false);
     if (!workspace) {
       setGitStatus(null);
       return;
@@ -1228,6 +1244,21 @@ function App() {
       disposed = true;
     };
   }, [activeThread.workspace, running]);
+
+  useEffect(() => {
+    if (!branchMenuOpen || !activeThread.workspace || !gitStatus?.isRepository) return;
+    let disposed = false;
+    getGitBranches(activeThread.workspace)
+      .then((branches) => {
+        if (!disposed) setGitBranches(branches);
+      })
+      .catch((error) => {
+        if (!disposed) setNotice(`${tr("无法读取分支", "Could not load branches")}: ${errorText(error)}`);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [activeThread.workspace, branchMenuOpen, gitStatus?.isRepository]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -1507,6 +1538,34 @@ function App() {
       return;
     }
     newThread(workspace);
+  };
+
+  const selectProject = (workspace?: string) => {
+    const key = workspaceKey(workspace);
+    revealProject(key);
+    const existing = threadsRef.current
+      .filter((thread) => workspaceKey(thread.workspace) === key)
+      .sort((left, right) => right.updatedAt - left.updatedAt)[0];
+    if (existing) activateThread(existing.id);
+    else newThread(workspace);
+    setProjectSwitcherOpen(false);
+  };
+
+  const selectGitBranch = async (branch: string) => {
+    const workspace = activeThread.workspace;
+    if (!workspace || !branch || branch === gitStatus?.branch || branchBusy) return;
+    setBranchBusy(true);
+    try {
+      const status = await switchGitBranch(workspace, branch);
+      setGitStatus(status);
+      setGitBranches((current) => current.map((item) => ({ ...item, current: item.name === status.branch })));
+      setBranchMenuOpen(false);
+      setNotice(`${tr("已切换分支", "Switched branch")}: ${branch}`);
+    } catch (error) {
+      setNotice(`${tr("分支切换失败", "Could not switch branch")}: ${errorText(error)}`);
+    } finally {
+      setBranchBusy(false);
+    }
   };
 
   const removeProjectFromList = (projectKey: string) => {
@@ -2385,6 +2444,7 @@ function App() {
           <button className="brand" type="button" title={tr("访问 LevelUpAPI 官网", "Visit LevelUpAPI")} onClick={() => void openLevelUpWebsite()}>
             <span className="brand-mark"><img src="/logo.png" alt="" /></span>
             <span className="brand-copy"><strong>LevelUpAgent</strong><small>v{packageMetadata.version}</small></span>
+            {codexLayoutActive && <ChevronDown className="brand-chevron" size={14} aria-hidden="true" />}
           </button>
           <IconButton
             className="sidebar-search-toggle"
@@ -2398,6 +2458,25 @@ function App() {
             <Search size={16} />
           </IconButton>
         </div>
+
+        {codexLayoutActive && <nav className="codex-primary-nav" aria-label={tr("Codex 导航", "Codex navigation")}>
+          <button type="button" className="codex-nav-item" onClick={() => newThread()}>
+            <Pencil size={15} />
+            <span>{tr("新建任务", "New task")}</span>
+          </button>
+          <button type="button" className="codex-nav-item" onClick={() => { setWorkspaceView("chat"); setRightPanelOpen(true); }}>
+            <GitMerge size={15} />
+            <span>{tr("拉取请求", "Pull requests")}</span>
+          </button>
+          <button type="button" className="codex-nav-item" onClick={() => setWorkspaceView("media")}>
+            <Timer size={15} />
+            <span>{tr("已安排", "Scheduled")}</span>
+          </button>
+          <button type="button" className="codex-nav-item" onClick={() => setMcpOpen(true)}>
+            <Network size={15} />
+            <span>{tr("插件", "Plugins")}</span>
+          </button>
+        </nav>}
 
         <div className="sidebar-service-row">
           <button
@@ -2456,6 +2535,7 @@ function App() {
           </div>
         )}
 
+        {codexLayoutActive && <div className="codex-pinned-label">{tr("置顶", "Pinned")}</div>}
         <div className="sidebar-section-heading">
           <span>{tr("项目", "Projects")}</span>
           <small>{displayedProjectGroups.filter((project) => project.workspace).length}</small>
@@ -2626,6 +2706,86 @@ function App() {
           </div>
         )}
         <header className="topbar" data-tauri-drag-region>
+          {codexLayoutActive && <div className="topbar-context-switchers" data-tauri-drag-region>
+            <div className="context-switcher-control">
+              <button
+                type="button"
+                className="context-switcher-button"
+                aria-haspopup="menu"
+                aria-expanded={projectSwitcherOpen}
+                onClick={() => {
+                  setProjectSwitcherOpen((open) => !open);
+                  setBranchMenuOpen(false);
+                }}
+              >
+                <FolderOpen size={14} aria-hidden="true" />
+                <span>{activeProjectName}</span>
+                <ChevronDown size={13} aria-hidden="true" />
+              </button>
+              {projectSwitcherOpen && (
+                <div className="context-switcher-menu project-switcher-menu" role="menu" aria-label={tr("切换项目", "Switch project")}>
+                  {displayedProjectGroups.filter((project) => project.workspace).map((project) => (
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={project.key === activeProjectKey}
+                      className={project.key === activeProjectKey ? "active" : ""}
+                      key={project.key}
+                      onClick={() => selectProject(project.workspace)}
+                    >
+                      <Folder size={14} aria-hidden="true" />
+                      <span><strong>{project.name}</strong><small>{project.threads.length} {tr("个会话", "conversations")}</small></span>
+                      {project.key === activeProjectKey && <Check size={13} aria-hidden="true" />}
+                    </button>
+                  ))}
+                  <button type="button" className="context-switcher-menu-action" onClick={() => { setProjectSwitcherOpen(false); void openProject(); }}>
+                    <FolderPlus size={14} aria-hidden="true" />
+                    <span>{tr("打开其他项目…", "Open another project…")}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+            <span className="context-switcher-separator" aria-hidden="true">/</span>
+            <div className="context-switcher-control">
+              <button
+                type="button"
+                className="context-switcher-button branch-switcher-button"
+                disabled={!gitStatus?.isRepository || branchBusy}
+                aria-haspopup="menu"
+                aria-expanded={branchMenuOpen}
+                title={gitStatus?.isRepository ? tr("切换项目分支", "Switch project branch") : tr("当前项目不是 Git 仓库", "The current project is not a Git repository")}
+                onClick={() => {
+                  setBranchMenuOpen((open) => !open);
+                  setProjectSwitcherOpen(false);
+                }}
+              >
+                <GitBranch size={14} aria-hidden="true" />
+                <span>{branchBusy ? tr("切换中…", "Switching…") : gitStatus?.branch ?? tr("无分支", "No branch")}</span>
+                <ChevronDown size={13} aria-hidden="true" />
+              </button>
+              {branchMenuOpen && (
+                <div className="context-switcher-menu branch-switcher-menu" role="menu" aria-label={tr("切换分支", "Switch branch")}>
+                  {gitBranches.length > 0 ? gitBranches.map((branch) => (
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={branch.current}
+                      className={branch.current ? "active" : ""}
+                      key={branch.name}
+                      disabled={branchBusy}
+                      onClick={() => void selectGitBranch(branch.name)}
+                    >
+                      <GitBranch size={14} aria-hidden="true" />
+                      <span>{branch.name}</span>
+                      {branch.current && <Check size={13} aria-hidden="true" />}
+                    </button>
+                  )) : (
+                    <div className="context-switcher-empty">{tr("没有可切换的本地分支", "No local branches available")}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>}
           <div className="task-heading">
             <Folder size={15} />
             {renamingThread ? (
@@ -2709,6 +2869,7 @@ function App() {
             <EmptyState
               workspace={activeThread.workspace}
               temporaryWorkspace={activeUsesDefaultWorkspace}
+              codexLayout={codexLayoutActive}
               connectionNeedsSetup={connectionNeedsSetup}
               onChooseWorkspace={chooseWorkspace}
               onConfigureConnection={() => setSettingsOpen(true)}
@@ -2992,6 +3153,7 @@ function App() {
       actions={layoutActions}
       shellClassName={rightPanelOpen && workspaceView === "chat" ? undefined : "details-collapsed"}
       slots={{
+        codexTitlebar: <CodexTitleBar title={qq2007Title} />,
         sidebar: sidebarSlot,
         workspace: workspaceSlot,
         mediaStudio: mediaStudioSlot,
@@ -3020,6 +3182,68 @@ function App() {
       }}
       overlays={overlays}
     />
+  );
+}
+
+function CodexTitleBar({ title }: { title: string }) {
+  const [maximized, setMaximized] = useState(false);
+
+  useEffect(() => {
+    const appWindow = getCurrentWindow();
+    let disposed = false;
+    let stopListening: (() => void) | undefined;
+    const syncMaximized = async () => {
+      const next = await appWindow.isMaximized();
+      if (!disposed) setMaximized(next);
+    };
+    void syncMaximized();
+    void appWindow.onResized(() => { void syncMaximized(); }).then((unlisten) => {
+      if (disposed) unlisten();
+      else stopListening = unlisten;
+    });
+    return () => {
+      disposed = true;
+      stopListening?.();
+    };
+  }, []);
+
+  const toggleMaximize = async () => {
+    const appWindow = getCurrentWindow();
+    await appWindow.toggleMaximize();
+    setMaximized(await appWindow.isMaximized());
+  };
+
+  return (
+    <header
+      className={`codex-titlebar${maximized ? " maximized" : ""}`}
+      onDoubleClick={(event) => {
+        if (!(event.target as HTMLElement).closest("button")) void toggleMaximize();
+      }}
+    >
+      <span className="codex-titlebar-mark" aria-hidden="true" data-tauri-drag-region><Command size={14} /></span>
+      <nav className="codex-menu" aria-label={tr("应用菜单", "Application menu")} data-tauri-drag-region>
+        <span>{tr("文件", "File")}</span>
+        <span>{tr("编辑", "Edit")}</span>
+        <span>{tr("视图", "View")}</span>
+        <span>{tr("帮助", "Help")}</span>
+      </nav>
+      <span className="codex-titlebar-brand" data-tauri-drag-region>
+        <strong data-tauri-drag-region>LevelUpAgent</strong>
+      </span>
+      <span className="codex-titlebar-title" data-tauri-drag-region>{title}</span>
+      <span className="codex-titlebar-spacer" data-tauri-drag-region />
+      <span className="codex-window-controls">
+        <button type="button" aria-label={tr("最小化窗口", "Minimize window")} title={tr("最小化", "Minimize")} onClick={() => { void getCurrentWindow().minimize(); }}>
+          <Minimize2 size={13} aria-hidden="true" />
+        </button>
+        <button type="button" aria-label={maximized ? tr("还原窗口", "Restore window") : tr("最大化窗口", "Maximize window")} title={maximized ? tr("还原", "Restore") : tr("最大化", "Maximize")} onClick={() => { void toggleMaximize(); }}>
+          {maximized ? <Copy size={13} aria-hidden="true" /> : <Maximize2 size={13} aria-hidden="true" />}
+        </button>
+        <button className="codex-window-close" type="button" aria-label={tr("关闭窗口", "Close window")} title={tr("关闭", "Close")} onClick={() => { void getCurrentWindow().close(); }}>
+          <X size={14} aria-hidden="true" />
+        </button>
+      </span>
+    </header>
   );
 }
 
@@ -3252,12 +3476,14 @@ function PetDialog({
 function EmptyState({
   workspace,
   temporaryWorkspace,
+  codexLayout,
   connectionNeedsSetup,
   onChooseWorkspace,
   onConfigureConnection,
 }: {
   workspace?: string;
   temporaryWorkspace: boolean;
+  codexLayout: boolean;
   connectionNeedsSetup: boolean;
   onChooseWorkspace: () => void;
   onConfigureConnection: () => void;
@@ -3265,7 +3491,11 @@ function EmptyState({
   return (
     <div className={`empty-state${connectionNeedsSetup ? " connection-onboarding" : ""}`}>
       <button className="empty-brand empty-brand-link" type="button" title={tr("访问 LevelUpAPI 官网", "Visit LevelUpAPI")} onClick={() => void openLevelUpWebsite()}><img src="/logo.png" alt="" /></button>
-      <h1>{connectionNeedsSetup ? tr("新增模型连接", "Add a model connection") : "LevelUpAgent"}</h1>
+      <h1>{connectionNeedsSetup
+        ? tr("新增模型连接", "Add a model connection")
+        : codexLayout
+          ? tr("我们应该在 LevelUpAgent 中构建什么？", "What should we build in LevelUpAgent?")
+          : "LevelUpAgent"}</h1>
       <p>{connectionNeedsSetup
         ? tr("配置 API Key 并选择模型后，就可以开始使用 LevelUpAgent。", "Configure an API key and choose a model to start using LevelUpAgent.")
         : temporaryWorkspace ? tr("临时工作区", "Temporary workspace") : workspace ? shortPath(workspace) : tr("准备就绪", "Ready")}</p>
@@ -3281,6 +3511,14 @@ function EmptyState({
           ? tr("选择正式项目", "Choose a project")
           : workspace ? tr("更换项目", "Change project") : tr("打开项目", "Open project")}
       </button>
+      {!connectionNeedsSetup && codexLayout && (
+        <div className="codex-suggestion-grid" aria-label={tr("常用任务建议", "Suggested tasks")}>
+          <div className="codex-suggestion-card"><Pencil size={15} /><span>{tr("探索并理解代码", "Explore and understand code")}</span></div>
+          <div className="codex-suggestion-card"><Code2 size={15} /><span>{tr("构建新功能、应用或工具", "Build a feature, app, or tool")}</span></div>
+          <div className="codex-suggestion-card"><GitMerge size={15} /><span>{tr("审查代码并提出修改建议", "Review code and suggest changes")}</span></div>
+          <div className="codex-suggestion-card"><CircleAlert size={15} /><span>{tr("修复问题和失败", "Fix problems and failures")}</span></div>
+        </div>
+      )}
     </div>
   );
 }

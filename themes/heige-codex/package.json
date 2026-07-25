@@ -1,0 +1,10 @@
+{
+  "name": "heige-codex-levelup-theme",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node levelup/build-theme.mjs",
+    "validate": "node ../../src-tauri/resources/skills/customize-levelup-layout/scripts/validate-layout.mjs codex.layout.json heige-codex.levelup-theme",
+    "test": "node levelup/theme-package.test.mjs"
+  }
+}

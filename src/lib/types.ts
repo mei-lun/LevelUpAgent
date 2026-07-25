@@ -428,6 +428,11 @@ export interface GitStatus {
   changes: GitFileChange[];
 }
 
+export interface GitBranch {
+  name: string;
+  current: boolean;
+}
+
 export interface GitDiff {
   path: string;
   content: string;

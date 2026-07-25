@@ -2,7 +2,9 @@ use std::path::{Component, Path};
 use std::sync::atomic::{AtomicU8, Ordering};
 use tokio::process::Command;
 
-use crate::models::{GitDiff, GitFileChange, GitRollbackPreview, GitRollbackResult, GitStatus};
+use crate::models::{
+    GitBranch, GitDiff, GitFileChange, GitRollbackPreview, GitRollbackResult, GitStatus,
+};
 use crate::process::hide_console_window;
 
 const MAX_DIFF_BYTES: usize = 512 * 1024;
@@ -113,6 +115,51 @@ pub async fn status(workspace: &str) -> Result<GitStatus, String> {
         branch,
         changes,
     })
+}
+
+pub async fn branches(workspace: &str) -> Result<Vec<GitBranch>, String> {
+    let root = canonical_workspace(workspace)?;
+    if git_is_unavailable() {
+        return Err(git_unavailable_message());
+    }
+    let repository_check = git(&root, &["rev-parse", "--is-inside-work-tree"]).await?;
+    if !repository_check.success || repository_check.stdout.trim() != "true" {
+        return Ok(Vec::new());
+    }
+    let current = git(&root, &["branch", "--show-current"]).await?;
+    let current = current.stdout.trim();
+    let result = git(&root, &["branch", "--format=%(refname:short)"]).await?;
+    if !result.success {
+        return Err(result.stderr);
+    }
+    Ok(result
+        .stdout
+        .lines()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(|name| GitBranch {
+            name: name.to_owned(),
+            current: name == current,
+        })
+        .collect())
+}
+
+pub async fn switch_branch(workspace: &str, branch: &str) -> Result<GitStatus, String> {
+    let root = canonical_workspace(workspace)?;
+    let branch = branch.trim();
+    if branch.is_empty() || branch.contains('\0') {
+        return Err("A valid Git branch is required".to_owned());
+    }
+    let result = git(&root, &["switch", "--", branch]).await?;
+    if !result.success {
+        return Err(if result.stderr.is_empty() {
+            "Git could not switch to the selected branch. Commit or stash local changes first."
+                .to_owned()
+        } else {
+            result.stderr
+        });
+    }
+    status(workspace).await
 }
 
 pub async fn diff(workspace: &str, relative_path: &str, staged: bool) -> Result<GitDiff, String> {
@@ -494,6 +541,51 @@ mod tests {
         let untracked = diff(&root_text, "new.txt", false).await.unwrap();
         assert!(untracked.content.contains("--- /dev/null"));
         assert!(untracked.content.contains("+new file"));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn lists_and_switches_local_branches() {
+        let root =
+            std::env::temp_dir().join(format!("levelup-git-branches-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let run = |arguments: &[&str]| {
+            let output = StdCommand::new("git")
+                .args(arguments)
+                .current_dir(&root)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        run(&["init", "--quiet"]);
+        run(&["config", "user.email", "test@levelup.invalid"]);
+        run(&["config", "user.name", "LevelUp Test"]);
+        std::fs::write(root.join("tracked.txt"), "baseline\n").unwrap();
+        run(&["add", "tracked.txt"]);
+        run(&["commit", "--quiet", "-m", "baseline"]);
+        run(&["branch", "feature/switcher"]);
+
+        let root_text = root.to_string_lossy().to_string();
+        let available = branches(&root_text).await.unwrap();
+        assert!(
+            available
+                .iter()
+                .any(|branch| branch.name == "feature/switcher")
+        );
+        let switched = switch_branch(&root_text, "feature/switcher").await.unwrap();
+        assert_eq!(switched.branch.as_deref(), Some("feature/switcher"));
+        assert!(
+            branches(&root_text)
+                .await
+                .unwrap()
+                .iter()
+                .any(|branch| branch.name == "feature/switcher" && branch.current)
+        );
 
         std::fs::remove_dir_all(root).unwrap();
     }

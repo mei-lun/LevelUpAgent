@@ -85,7 +85,7 @@ Conditions support `path` with `equals`, `notEquals`, or `truthy`, plus nested `
 
 ## Slots, data, and actions
 
-General slots are `sidebar`, `workspace`, `mediaStudio`, and `inspector`. QQ2007 compatibility slots are also registered for legacy packages.
+General slots are `codexTitlebar`, `sidebar`, `workspace`, `mediaStudio`, and `inspector`. The `codexTitlebar` slot is the built-in frameless Codex-style title bar and owns real minimize, maximize, and close controls. QQ2007 compatibility slots are also registered for legacy packages.
 
 Layouts can read non-secret interface data for the app, current view, thread metadata, profile/model identity, connection state, agent mode, permission level, balance display, project/thread summaries, Git summary, goal status, and local layout state. They cannot read API keys, credentials, message bodies, arbitrary file contents, or provider request payloads.
 

@@ -11,6 +11,7 @@ import type {
   ConfigWriteResult,
   ExternalConfigCandidate,
   ExternalConfigTarget,
+  GitBranch,
   GitDiff,
   GitRollbackPreview,
   GitRollbackResult,
@@ -782,6 +783,14 @@ export async function importExternalConfig(candidateId: string): Promise<Provide
 
 export async function getGitStatus(workspace: string): Promise<GitStatus> {
   return invoke<GitStatus>("get_git_status", { workspace });
+}
+
+export async function getGitBranches(workspace: string): Promise<GitBranch[]> {
+  return invoke<GitBranch[]>("get_git_branches", { workspace });
+}
+
+export async function switchGitBranch(workspace: string, branch: string): Promise<GitStatus> {
+  return invoke<GitStatus>("switch_git_branch", { workspace, branch });
 }
 
 export async function getGitDiff(

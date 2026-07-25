@@ -95,7 +95,7 @@ LevelUpAgent 的主题系统遵循以下原则：
 - schemaVersion 1 的 `layout` 可省略，仅用于兼容 `standard` 与 `qq2007`。
 - schemaVersion 2 使用可选 `layout` 对象，将 `layout.json` 的内容直接内嵌到主题包。
 - schemaVersion 2 未声明 `layout` 时读取内置默认布局文件。
-- `layout` 与 `layoutFile` 不能同时声明；`layoutFile` 仅用于兼容旧版 companion 包。
+- 内嵌对象形式的 `layout` 与 `layoutFile` 不能同时声明；为兼容旧版导入器，`layout: "standard"` 可以与本地 `layoutFile` companion 同时声明，宿主会优先读取 companion 布局。
 - 旧版 schemaVersion 2 的 `layoutFile` companion 文件仍可读取，但新主题不应依赖它。
 - `homepage` 最多 300 个可打印字符，可省略。
 - `license` 最多 80 个可打印字符，可省略。
@@ -353,6 +353,7 @@ pnpm tauri build --bundles nsis
 - 颜色覆盖不能代替结构适配；三栏、标题栏和好友面板需要真实 DOM。
 - 主题资产必须迁入主题自己的 `levelup/assets/`，不能依赖旧平台目录。
 - 标题栏不能同时保留系统栏和主题栏，否则会出现两层标题栏。
+- Codex 风格布局使用通用 `codexTitlebar` 插槽；主题只能覆盖其外观，不能用 CSS 伪元素替代真实窗口按钮。
 - 装饰圆点不能冒充窗口按钮；可见控件必须有实际功能和可访问标签。
 - 将整个标题栏标记为拖动区域会吞掉按钮点击，应只标记标题和空白区域。
 - 输入区需要随可用高度伸展，工具栏固定到底部，不能依赖固定截图尺寸。
